@@ -15,7 +15,8 @@ static const int kHeight = 170;
 static const uint8_t kTouchAddr = 0x15;  // CST816
 
 static TFT_eSPI s_tft;
-static uint8_t s_drawBuf[kWidth * 40 * 2];  // 40 lines of RGB565
+// LVGL 9 asserts that draw buffers are aligned; a plain uint8_t array is not guaranteed to be.
+alignas(4) static uint8_t s_drawBuf[kWidth * 40 * 2];  // 40 lines of RGB565
 
 static uint32_t tickCb() { return millis(); }
 

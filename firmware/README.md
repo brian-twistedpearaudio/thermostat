@@ -14,6 +14,7 @@ PlatformIO project for the LilyGO T-Display-S3 Touch. Open this `firmware` folde
 - When idle the screen dims and shows only the temperature (red on a sensor fault) and time; the first touch only wakes it, to Home
 - Watchdog: a main loop hung for 8 s resets the board
 - Wi-Fi, set up from Settings > Wi-Fi through a temporary hotspot and web page, with a QR code on the screen
+- Optional thermostat name (up to 16 characters), set on the same page; it replaces "Inside" on Home. To change only the name, leave the network on "Keep"
 - Clock from network time (US Eastern, with daylight saving)
 
 Not yet included: 5-minute logging, Graph / Info screens, REST API, server uplink, OTA.
@@ -28,10 +29,11 @@ Not yet included: 5-minute logging, Graph / Info screens, REST API, server uplin
 
 ## Status of checks
 
-- `lib/thermo_core` (control and schedule logic): 13 control and schedule tests passed earlier. 3 settings and 2 Wi-Fi text tests added since; they compile, but have **not been run** (no PC compiler yet).
+- `lib/thermo_core` (control and schedule logic): 13 control and schedule tests passed earlier. 3 settings and 3 Wi-Fi and name text tests added since; they compile, but have **not been run** (no PC compiler yet).
 - Firmware builds and boots on the bare T-Display-S3 board (no sensor or relay) with no resets in 25 s. Set point +, the settings screen (scrolling and buttons), saving settings, Off mode display, the look of the dimmed screen and wake-up touch were checked by hand.
 - Wi-Fi setup through the hotspot was checked on the board: a failed first attempt was reported and setup could be repeated, the second attempt connected, and the log showed network time setting the clock. The `request handler not found` log lines during setup are harmless (requests for pages that do not exist, answered by a redirect to the setup page).
-- **Not yet confirmed on hardware:** reconnecting after a reset or router outage, keeping the saved network when a new one fails, a watchdog reset, sensor readings, heating (including Off mode stopping a heat call) and the relay.
+- Setting a thermostat name, and reconnecting to Wi-Fi after a reset without setup, were also checked on the board.
+- **Not yet confirmed on hardware:** recovering from a router outage, keeping the saved network when a new one fails, a watchdog reset, sensor readings, heating (including Off mode stopping a heat call) and the relay.
 
 ## Check on first power-up
 

@@ -220,6 +220,26 @@ static void test_wifi_validation() {
   TEST_ASSERT_FALSE(validWifi("Home", "12345678\n"));
 }
 
+static void test_clean_name() {
+  std::string n = "  Living Room ";
+  TEST_ASSERT_TRUE(cleanName(n));
+  TEST_ASSERT_EQUAL_STRING("Living Room", n.c_str());
+  n = "Sam\xE2\x80\x99s Room";  // curly apostrophe
+  TEST_ASSERT_TRUE(cleanName(n));
+  TEST_ASSERT_EQUAL_STRING("Sam's Room", n.c_str());
+  n = "   ";
+  TEST_ASSERT_TRUE(cleanName(n));
+  TEST_ASSERT_TRUE(n.empty());
+  n = std::string(16, 'a');
+  TEST_ASSERT_TRUE(cleanName(n));
+  n = std::string(17, 'a');
+  TEST_ASSERT_FALSE(cleanName(n));
+  n = "Caf\xC3\xA9";
+  TEST_ASSERT_FALSE(cleanName(n));
+  n = "a\nb";
+  TEST_ASSERT_FALSE(cleanName(n));
+}
+
 static void test_html_escape() {
   TEST_ASSERT_EQUAL_STRING("&lt;b&gt;&quot;A&amp;B&#39;s&quot;", htmlEscape("<b>\"A&B's\"").c_str());
 }
@@ -243,6 +263,7 @@ int main(int, char**) {
   RUN_TEST(test_settings_step_limits);
   RUN_TEST(test_settings_text);
   RUN_TEST(test_wifi_validation);
+  RUN_TEST(test_clean_name);
   RUN_TEST(test_html_escape);
   return UNITY_END();
 }

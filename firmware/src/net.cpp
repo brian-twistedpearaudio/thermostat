@@ -32,7 +32,8 @@ static Status s_status;
 
 // Everything below is used only by the network task.
 static std::string s_ssid, s_password;        // saved network
-static std::string s_newSsid, s_newPassword;  // entered on the setup page
+static std::string s_newSsid, s_newPassword;  // entered on the setup page; empty SSID = keep the saved network
+static std::string s_name;                    // saved thermostat name
 static bool s_submitted = false;
 static uint32_t s_submittedMs = 0;
 static uint32_t s_sinceMs = 0;                // start of the current attempt, pause or hotspot
@@ -112,6 +113,34 @@ static bool saveNetwork() {
   return ok;
 }
 
+// ---- Thermostat name ----
+
+static void setName(const std::string& name) {
+  s_name = name;
+  portENTER_CRITICAL(&s_mux);
+  strlcpy(s_status.name, name.c_str(), sizeof(s_status.name));
+  portEXIT_CRITICAL(&s_mux);
+}
+
+static void loadName() {
+  Preferences p;
+  if (!p.begin(kNamespace, true)) return;  // nothing saved yet
+  std::string name;
+  if (p.isKey("name")) name = p.getString("name").c_str();
+  p.end();
+  if (thermo::cleanName(name)) setName(name);
+}
+
+static bool saveName(const std::string& name) {
+  if (name == s_name) return true;
+  Preferences p;
+  if (!p.begin(kNamespace, false)) return false;
+  const bool ok = name.empty() ? p.remove("name") : p.putString("name", name.c_str()) == name.size();
+  p.end();
+  if (ok) setName(name);
+  return ok;
+}
+
 // ---- Connecting ----
 
 static void join(State st, const std::string& ssid, const std::string& password) {
@@ -160,44 +189,70 @@ static void sendPage(int code, const std::string& body) {
   s_server.send(code, "text/html; charset=utf-8", page.c_str());
 }
 
-static void sendForm(int code, const char* error) {
+static void sendForm(int code, const char* error, const std::string& name) {
   std::string b;
   if (error[0] != '\0') b += std::string("<p><b>") + error + "</b></p>";
-  b += "<form method=post action=/save><label for=n>Network</label><select id=n name=ssid>";
-  for (const std::string& n : s_networks) {
-    const std::string e = thermo::htmlEscape(n);
-    b += "<option value=\"" + e + "\">" + e + "</option>";
+  b += "<form method=post action=/save><label for=t>Thermostat name (optional)</label>"
+       "<input id=t name=name maxlength=" + std::to_string(thermo::kMaxName) +
+       " autocomplete=off value=\"" + thermo::htmlEscape(name) + "\">"
+       "<label for=n>Network</label><select id=n name=net>";
+  if (!s_ssid.empty()) b += "<option value=keep>Keep " + thermo::htmlEscape(s_ssid) + "</option>";
+  // Listed networks are sent by number, so no network name can be mistaken for "keep" or "other".
+  for (size_t i = 0; i < s_networks.size(); ++i) {
+    b += "<option value=" + std::to_string(i) + ">" + thermo::htmlEscape(s_networks[i]) + "</option>";
   }
-  b += "<option value=\"\">Other (type the name below)</option></select>"
+  b += "<option value=other>Other (type the name below)</option></select>"
        "<label for=o>Other network name</label>"
        "<input id=o name=other maxlength=32 autocapitalize=none autocomplete=off>"
        "<label for=p>Password</label>"
        "<input id=p name=pass type=password maxlength=63 autocomplete=off>"
-       "<button>Connect</button></form>"
+       "<button>Save and connect</button></form>"
        "<p>The thermostat uses 2.4 GHz networks only.</p>";
   sendPage(code, b);
 }
 
 static void handleSave() {
-  std::string ssid = s_server.arg("other").c_str();
-  if (ssid.empty()) ssid = s_server.arg("ssid").c_str();
-  const std::string password = s_server.arg("pass").c_str();
-  if (!thermo::validWifi(ssid, password)) {
-    sendForm(400, "Choose a network. The password must be 8 to 63 characters, or empty for an open network.");
+  std::string name = s_server.arg("name").c_str();
+  if (!thermo::cleanName(name)) {
+    sendForm(400, "The thermostat name can have up to 16 plain letters, numbers and symbols.", name);
     return;
   }
+
+  const String choice = s_server.arg("net");
+  std::string ssid = s_server.arg("other").c_str();
+  const std::string password = s_server.arg("pass").c_str();
+  const bool keep = ssid.empty() && choice == "keep" && !s_ssid.empty();
+  if (keep && !password.empty()) {
+    sendForm(400, "To enter a new password, choose the network from the list.", name);
+    return;
+  }
+  if (ssid.empty() && choice.length() > 0 && isDigit(choice[0])) {
+    const size_t i = static_cast<size_t>(choice.toInt());
+    if (i < s_networks.size()) ssid = s_networks[i];
+  }
+  if (!keep && !thermo::validWifi(ssid, password)) {
+    sendForm(400, "Choose a network. The password must be 8 to 63 characters, or empty for an open network.",
+             name);
+    return;
+  }
+  if (!saveName(name)) {
+    Serial.println("Name save FAILED");
+    sendForm(500, "The thermostat name could not be saved. Please try again.", name);
+    return;
+  }
+  if (keep) ssid.clear();
   s_newSsid = ssid;
   s_newPassword = password;
   s_submitted = true;
   s_submittedMs = millis();
-  sendPage(200, "<p>Connecting to <b>" + thermo::htmlEscape(ssid) +
+  sendPage(200, "<p>Connecting to <b>" + thermo::htmlEscape(keep ? s_ssid : ssid) +
                     "</b>.</p><p>This hotspot now closes. Check the thermostat screen for the result.</p>");
 }
 
 static void addRoutes() {
   if (s_routesAdded) return;
   s_routesAdded = true;
-  s_server.on("/", HTTP_GET, [] { sendForm(200, ""); });
+  s_server.on("/", HTTP_GET, [] { sendForm(200, "", s_name); });
   s_server.on("/save", HTTP_POST, handleSave);
   s_server.onNotFound([] {  // sends phones that are checking for internet to the page
     s_server.sendHeader("Location", "http://192.168.4.1/");
@@ -287,7 +342,8 @@ static void step() {
       s_server.handleClient();
       if (s_submitted && millis() - s_submittedMs >= kReplyMs) {
         closePortal();
-        join(State::Trying, s_newSsid, s_newPassword);
+        if (s_newSsid.empty()) joinSaved();
+        else join(State::Trying, s_newSsid, s_newPassword);
       } else if (!s_submitted && millis() - s_sinceMs >= kPortalMs) {
         Serial.println("Setup hotspot timed out");
         closePortal();
@@ -346,6 +402,7 @@ static void task(void*) {
 }
 
 void begin() {
+  loadName();  // before the task starts, so Home shows the name from its first refresh
   // Core 0; loop(), with heating control, runs on core 1.
   if (xTaskCreatePinnedToCore(task, "net", 8192, nullptr, 1, nullptr, 0) != pdPASS) {
     Serial.println("Network task FAILED to start");

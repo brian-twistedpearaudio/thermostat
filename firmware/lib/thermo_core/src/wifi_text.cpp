@@ -13,6 +13,22 @@ bool validWifi(const std::string& ssid, const std::string& password) {
   return true;
 }
 
+bool cleanName(std::string& name) {
+  std::string out = name;
+  for (const char* curly : {"\xE2\x80\x98", "\xE2\x80\x99"}) {  // U+2018, U+2019
+    size_t at;
+    while ((at = out.find(curly)) != std::string::npos) out.replace(at, 3, "'");
+  }
+  const size_t first = out.find_first_not_of(' ');
+  out = first == std::string::npos ? "" : out.substr(first, out.find_last_not_of(' ') - first + 1);
+  if (out.size() > kMaxName) return false;
+  for (char c : out) {
+    if (c < 0x20 || c > 0x7E) return false;
+  }
+  name = out;
+  return true;
+}
+
 std::string htmlEscape(const std::string& s) {
   std::string out;
   for (char c : s) {

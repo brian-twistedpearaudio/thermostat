@@ -19,6 +19,7 @@ struct Status {
   State state = State::NotSetUp;
   bool setupFailed = false;  // the last network entered could not be joined
   char ssid[33] = "";        // saved network, or the one being tried
+  char name[17] = "";        // thermostat name from the setup page; empty if none
   char ip[16] = "";          // when connected
   char apName[24] = "";      // hotspot name and password, while it is open
   char apPassword[16] = "";

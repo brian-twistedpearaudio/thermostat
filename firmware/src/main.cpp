@@ -101,6 +101,7 @@ static void onSettingStep(thermo::SettingId id, int dir) {
 
 static void refreshWifi() {
   const net::Status w = net::status();
+  ui::homeSetName(w.name);
   ui::wifiUpdate(w);
   ui::settingsSetWifi(ui::wifiSummary(w));
   display::keepAwake(w.state == net::State::Starting || w.state == net::State::Hotspot ||
@@ -138,6 +139,7 @@ void setup() {
 
   controlAndRefresh();
   net::begin();
+  refreshWifi();
 
   // If loop() stops running, reset the chip; relay::begin() then starts with heat off.
   if (esp_task_wdt_init(WATCHDOG_SECONDS, true) != ESP_OK || esp_task_wdt_add(nullptr) != ESP_OK) {

@@ -11,6 +11,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 namespace ui {
 
@@ -43,6 +44,10 @@ static const int kBottomBaseline = 150;  // humidity and the Heating pill text
 static const int kCaptionBaseline = 74;  // SET / MANUAL
 static const int kSetBaseline = 99;      // set point value
 
+static const int kMaxNameW = 92;         // leaves room for the gear and "12:00 PM"
+
+static lv_obj_t* s_name;
+static lv_obj_t* s_gear;
 static lv_obj_t* s_clock;
 static lv_obj_t* s_whole;
 static lv_obj_t* s_frac;
@@ -111,6 +116,23 @@ static void settingsEvent(lv_event_t*) {
   if (s_onSettings) s_onSettings();
 }
 
+void homeSetName(const char* name) {
+  static char shown[24] = "";
+  const char* text = name[0] != '\0' ? name : "Inside";
+  if (strcmp(text, shown) == 0) return;
+  strlcpy(shown, text, sizeof(shown));
+
+  // As wide as the text, up to the room left beside the gear and clock; longer text ends in "...".
+  int w = 0;
+  for (const char* c = text; *c != '\0'; ++c) {
+    w += lv_font_get_glyph_width(&ui_font_body_11, static_cast<uint8_t>(c[0]), static_cast<uint8_t>(c[1]));
+  }
+  if (w > kMaxNameW) w = kMaxNameW;
+  lv_obj_set_width(s_name, w);
+  lv_label_set_text(s_name, text);
+  lv_obj_set_pos(s_gear, kPad + w + 8, 13);
+}
+
 void homeShow() { lv_screen_load(s_screen); }
 
 void homeCreate(void (*onSetpointDelta)(int delta), void (*onSettings)()) {
@@ -125,18 +147,20 @@ void homeCreate(void (*onSetpointDelta)(int delta), void (*onSettings)()) {
 
   // ---- Left column ----
   // Top row: "Inside" left, clock right (canvas 22 px / 500 -> 11 px Medium, muted)
-  lv_obj_t* inside = makeLabel(scr, &ui_font_body_11, kMuted, "Inside");
-  lv_obj_set_pos(inside, kPad, yForBaseline(&ui_font_body_11, kTopBaseline));
+  // The thermostat's name replaces "Inside" once one is set (homeSetName).
+  s_name = makeLabel(scr, &ui_font_body_11, kMuted, "");
+  lv_obj_set_pos(s_name, kPad, yForBaseline(&ui_font_body_11, kTopBaseline));
+  lv_obj_set_height(s_name, lv_font_get_line_height(&ui_font_body_11));
+  lv_label_set_long_mode(s_name, LV_LABEL_LONG_MODE_DOTS);
 
   s_clock = makeLabel(scr, &ui_font_body_11, kMuted, "--:--");
   lv_obj_set_width(s_clock, 90);
   lv_obj_set_style_text_align(s_clock, LV_TEXT_ALIGN_RIGHT, 0);
   lv_obj_set_pos(s_clock, kPad + kLeftW - 90, yForBaseline(&ui_font_body_11, kTopBaseline));
 
-  // Settings: a gear after "Inside"; the touch target is the whole top-left strip.
-  lv_obj_update_layout(inside);
-  lv_obj_t* gear = makeLabel(scr, &lv_font_montserrat_14, kMuted, LV_SYMBOL_SETTINGS);
-  lv_obj_set_pos(gear, kPad + lv_obj_get_width(inside) + 8, 13);
+  // Settings: a gear after the name; the touch target is the whole top-left strip.
+  s_gear = makeLabel(scr, &lv_font_montserrat_14, kMuted, LV_SYMBOL_SETTINGS);
+  homeSetName("");
   lv_obj_t* hit = lv_obj_create(scr);
   lv_obj_remove_style_all(hit);
   lv_obj_set_pos(hit, 0, 0);

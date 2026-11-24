@@ -49,6 +49,13 @@ static void controlAndRefresh() {
   st.timeValid = timeValid;
   st.hour = static_cast<uint8_t>(tmNow.tm_hour);
   st.minute = static_cast<uint8_t>(tmNow.tm_min);
+#if UI_DEMO_CYCLE
+  // Display-only demo (see config.h): the relay above is unaffected.
+  st.sensorOk = true;
+  st.tempF = NO_SENSOR_DISPLAY_TEMP_F;
+  st.humidity = 41;
+  st.heating = (millis() / UI_DEMO_PERIOD_MS) % 2 == 0;
+#endif
   ui::homeUpdate(st);
 }
 

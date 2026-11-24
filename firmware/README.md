@@ -27,8 +27,8 @@ Not yet included: 5-minute logging, Graph / Info screens, Wi-Fi and clock, REST 
 ## Status of checks
 
 - `lib/thermo_core` (control and schedule logic): 13 control and schedule tests passed earlier. 3 settings tests added since; they compile, but have **not been run** (no PC compiler yet).
-- Firmware builds and boots on the bare T-Display-S3 board (no sensor or relay) with no resets in 25 s. Set point +, saving settings, and the look of the dimmed screen were checked by hand.
-- **Not yet confirmed on hardware:** the rest of the settings screen, Off mode, wake-up touch, a watchdog reset, sensor readings, heating and the relay.
+- Firmware builds and boots on the bare T-Display-S3 board (no sensor or relay) with no resets in 25 s. Set point +, the settings screen (scrolling and buttons), saving settings, Off mode display, the look of the dimmed screen and wake-up touch were checked by hand.
+- **Not yet confirmed on hardware:** a watchdog reset, sensor readings, heating (including Off mode stopping a heat call) and the relay.
 
 ## Check on first power-up
 

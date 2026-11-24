@@ -1,0 +1,142 @@
+// Thermostat firmware — sensor, control, relay, home and settings screens.
+// Not yet included: logging, graph/info screens, Wi-Fi, REST API.
+#include <Arduino.h>
+#include <Wire.h>
+#include <esp_task_wdt.h>
+#include <esp_timer.h>
+#include <time.h>
+
+#include "config.h"
+#include "control.h"
+#include "display.h"
+#include "pins.h"
+#include "relay.h"
+#include "schedule.h"
+#include "sensor.h"
+#include "settings_store.h"
+#include "ui_home.h"
+#include "ui_idle.h"
+#include "ui_settings.h"
+
+static thermo::Controller s_controller;
+static thermo::Schedule s_schedule;  // empty until defaults are supplied
+static thermo::SetpointManager s_setpoints;
+static thermo::Settings s_settings;
+
+static uint32_t s_lastControlMs = 0;
+
+static uint32_t uptimeSeconds() {
+  return static_cast<uint32_t>(esp_timer_get_time() / 1000000LL);
+}
+
+// Runs the schedule, control logic and relay, then refreshes the screen.
+static void controlAndRefresh() {
+  // Local time is only valid once the clock has been set (NTP arrives with Wi-Fi).
+  struct tm tmNow = {};
+  const time_t now = time(nullptr);
+  const bool timeValid = now > 1700000000;
+  if (timeValid) localtime_r(&now, &tmNow);
+  const uint16_t minuteOfDay = static_cast<uint16_t>(tmNow.tm_hour * 60 + tmNow.tm_min);
+
+  const sensor::Reading& r = sensor::latest();
+
+  s_controller.setSetpoint(s_setpoints.update(s_schedule, timeValid, minuteOfDay));
+  const bool heat = s_controller.update(r.tempF, r.ok, uptimeSeconds());
+  relay::set(heat);
+
+  ui::HomeState st;
+  st.sensorOk = r.ok;
+  st.tempF = r.tempF;
+  st.humidity = r.humidity;
+  st.setpointF = s_controller.setpoint();
+  st.heating = heat;
+  st.modeOff = !s_settings.heatMode;
+  st.overridden = s_setpoints.overridden() && s_schedule.count() > 0;
+  st.timeValid = timeValid;
+  st.hour = static_cast<uint8_t>(tmNow.tm_hour);
+  st.minute = static_cast<uint8_t>(tmNow.tm_min);
+#if UI_DEMO_CYCLE
+  // Display-only demo (see config.h): the relay above is unaffected.
+  st.sensorOk = true;
+  st.tempF = NO_SENSOR_DISPLAY_TEMP_F;
+  st.humidity = 41;
+  st.heating = (millis() / UI_DEMO_PERIOD_MS) % 2 == 0;
+#endif
+  ui::homeUpdate(st);
+  ui::idleUpdate(st);
+}
+
+static void onSetpointDelta(int delta) {
+  s_setpoints.manualSet(s_setpoints.setpoint() + delta * SETPOINT_STEP_F);
+  const int f = static_cast<int>(lroundf(s_setpoints.setpoint()));
+  if (f != s_settings.setpointF) {
+    s_settings.setpointF = f;
+    settings_store::changed(s_settings);
+  }
+  controlAndRefresh();
+}
+
+// Pushes the settings to everything that uses them.
+static void applySettings() {
+  thermo::ControlConfig cfg;
+  cfg.swingF = s_settings.swingTenths / 10.0f;
+  cfg.minOnS = MIN_ON_SECONDS;
+  cfg.minOffS = MIN_OFF_SECONDS;
+  s_controller.setConfig(cfg);
+  s_controller.setMode(s_settings.heatMode ? thermo::Mode::Heat : thermo::Mode::Off);
+  sensor::setOffset(s_settings.offsetTenths / 10.0f);
+  display::setBrightness(s_settings.brightnessPct);
+  display::setDimTimeout(s_settings.dimSeconds);
+  ui::settingsUpdate(s_settings);
+}
+
+static void onSettingStep(thermo::SettingId id, int dir) {
+  if (!thermo::stepSetting(s_settings, id, dir)) return;
+  settings_store::changed(s_settings);
+  applySettings();
+  controlAndRefresh();  // Mode Off must release the relay at once
+}
+
+void setup() {
+  relay::begin();  // first: make sure the boiler call is off
+
+  Serial.begin(115200);
+  setenv("TZ", TIMEZONE, 1);
+  tzset();
+
+  Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
+
+  s_settings = settings_store::load();
+  s_setpoints = thermo::SetpointManager(static_cast<float>(s_settings.setpointF));
+
+  display::begin();
+  ui::homeCreate(onSetpointDelta, ui::settingsShow);
+  ui::settingsCreate(onSettingStep, ui::homeShow);
+  ui::idleCreate();
+  display::onDim(ui::idleShow);
+  display::onWake(ui::homeShow);
+  applySettings();
+
+  if (!sensor::begin()) Serial.println("BME688 not found");
+
+  controlAndRefresh();
+
+  // If loop() stops running, reset the chip; relay::begin() then starts with heat off.
+  if (esp_task_wdt_init(WATCHDOG_SECONDS, true) != ESP_OK || esp_task_wdt_add(nullptr) != ESP_OK) {
+    Serial.println("Watchdog setup FAILED");
+  }
+}
+
+void loop() {
+  esp_task_wdt_reset();
+  display::loop();
+  sensor::poll();
+  settings_store::poll();
+
+  const uint32_t now = millis();
+  if (now - s_lastControlMs >= 1000) {
+    s_lastControlMs = now;
+    controlAndRefresh();
+  }
+  delay(5);
+}

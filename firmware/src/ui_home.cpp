@@ -18,8 +18,8 @@ namespace ui {
 // near-black with a slight tint; this panel shows those as navy / purple, so the
 // darks here are neutral and the tinted ones more saturated.
 static const uint32_t kBg = 0x000000;              // canvas 0x0B0F14
-static const uint32_t kSurface = 0x262626;         // canvas 0x18202A
-static const uint32_t kSurfacePressed = 0x404040;  // canvas 0x2A3644
+static const uint32_t kSurface = 0x1A1A1A;         // canvas 0x18202A
+static const uint32_t kSurfacePressed = 0x333333;  // canvas 0x2A3644
 static const uint32_t kText = 0xFFFFFF;            // canvas 0xF2F5F8
 static const uint32_t kMuted = 0x9A9A9A;           // canvas 0x9AA7B4
 static const uint32_t kHeatText = 0xFFA050;        // canvas 0xFFB37A

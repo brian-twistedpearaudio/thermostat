@@ -13,5 +13,6 @@ struct Reading {
 bool begin();            // Wire must already be started
 void poll();             // call often from loop(); never blocks for long
 const Reading& latest();
+void setOffset(float offsetF);  // takes effect on the current reading straight away
 
 }  // namespace sensor

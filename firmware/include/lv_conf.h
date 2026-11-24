@@ -6,6 +6,7 @@
 #define LV_MEM_SIZE (64 * 1024U)
 
 #define LV_FONT_MONTSERRAT_14 1
+#define LV_FONT_MONTSERRAT_36 1  // idle screen time
 #define LV_FONT_DEFAULT &lv_font_montserrat_14
 
 #define LV_USE_LOG 0

@@ -3,6 +3,7 @@
 
 #include "control.h"
 #include "schedule.h"
+#include "settings.h"
 
 using namespace thermo;
 
@@ -149,6 +150,62 @@ static void test_manual_change_before_time_is_known() {
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 70.0f, m.update(s, true, 17 * 60));
 }
 
+// ---------- Settings ----------
+
+static void test_settings_sanitize() {
+  Settings s;
+  s.setpointF = 500;
+  s.swingTenths = 0;
+  s.offsetTenths = -999;
+  s.brightnessPct = 0;
+  s.dimSeconds = 7;
+  sanitize(s);
+  TEST_ASSERT_EQUAL_INT(85, s.setpointF);
+  TEST_ASSERT_EQUAL_INT(5, s.swingTenths);
+  TEST_ASSERT_EQUAL_INT(-100, s.offsetTenths);
+  TEST_ASSERT_EQUAL_INT(10, s.brightnessPct);  // never black
+  TEST_ASSERT_EQUAL_INT(60, s.dimSeconds);
+  s.swingTenths = 17;
+  s.dimSeconds = 0;
+  sanitize(s);
+  TEST_ASSERT_EQUAL_INT(15, s.swingTenths);
+  TEST_ASSERT_EQUAL_INT(0, s.dimSeconds);  // 0 = never is valid
+}
+
+static void test_settings_step_limits() {
+  Settings s;
+  TEST_ASSERT_TRUE(stepSetting(s, SettingId::Mode, 1));
+  TEST_ASSERT_FALSE(s.heatMode);
+  for (int i = 0; i < 300; ++i) {
+    stepSetting(s, SettingId::Swing, 1);
+    stepSetting(s, SettingId::Offset, -1);
+    stepSetting(s, SettingId::Brightness, -1);
+    stepSetting(s, SettingId::DimTimeout, 1);
+  }
+  TEST_ASSERT_EQUAL_INT(30, s.swingTenths);
+  TEST_ASSERT_EQUAL_INT(-100, s.offsetTenths);
+  TEST_ASSERT_EQUAL_INT(10, s.brightnessPct);
+  TEST_ASSERT_EQUAL_INT(0, s.dimSeconds);
+  TEST_ASSERT_FALSE(stepSetting(s, SettingId::Swing, 1));  // no change at the limit
+  TEST_ASSERT_TRUE(stepSetting(s, SettingId::DimTimeout, -1));
+  TEST_ASSERT_EQUAL_INT(300, s.dimSeconds);
+}
+
+static void test_settings_text() {
+  Settings s;
+  char b[16];
+  s.offsetTenths = -5;
+  formatSetting(s, SettingId::Offset, b, sizeof(b));
+  TEST_ASSERT_EQUAL_STRING("-0.5\xC2\xB0", b);
+  formatSetting(s, SettingId::Swing, b, sizeof(b));
+  TEST_ASSERT_EQUAL_STRING("1.0\xC2\xB0", b);
+  formatSetting(s, SettingId::DimTimeout, b, sizeof(b));
+  TEST_ASSERT_EQUAL_STRING("1 min", b);
+  s.dimSeconds = 0;
+  formatSetting(s, SettingId::DimTimeout, b, sizeof(b));
+  TEST_ASSERT_EQUAL_STRING("Never", b);
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_no_heat_until_min_off_after_boot);
@@ -164,5 +221,8 @@ int main(int, char**) {
   RUN_TEST(test_manual_change_lasts_until_next_event);
   RUN_TEST(test_manual_change_across_midnight_and_single_entry);
   RUN_TEST(test_manual_change_before_time_is_known);
+  RUN_TEST(test_settings_sanitize);
+  RUN_TEST(test_settings_step_limits);
+  RUN_TEST(test_settings_text);
   return UNITY_END();
 }

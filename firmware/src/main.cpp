@@ -1,7 +1,8 @@
-// Thermostat firmware — stage 1: sensor, control, relay, home screen.
-// Not yet included: logging, graph/settings screens, Wi-Fi, REST API, stored settings.
+// Thermostat firmware — sensor, control, relay, home and settings screens.
+// Not yet included: logging, graph/info screens, Wi-Fi, REST API.
 #include <Arduino.h>
 #include <Wire.h>
+#include <esp_task_wdt.h>
 #include <esp_timer.h>
 #include <time.h>
 
@@ -12,11 +13,15 @@
 #include "relay.h"
 #include "schedule.h"
 #include "sensor.h"
+#include "settings_store.h"
 #include "ui_home.h"
+#include "ui_idle.h"
+#include "ui_settings.h"
 
 static thermo::Controller s_controller;
 static thermo::Schedule s_schedule;  // empty until defaults are supplied
-static thermo::SetpointManager s_setpoints(DEFAULT_SETPOINT_F);
+static thermo::SetpointManager s_setpoints;
+static thermo::Settings s_settings;
 
 static uint32_t s_lastControlMs = 0;
 
@@ -45,6 +50,7 @@ static void controlAndRefresh() {
   st.humidity = r.humidity;
   st.setpointF = s_controller.setpoint();
   st.heating = heat;
+  st.modeOff = !s_settings.heatMode;
   st.overridden = s_setpoints.overridden() && s_schedule.count() > 0;
   st.timeValid = timeValid;
   st.hour = static_cast<uint8_t>(tmNow.tm_hour);
@@ -57,11 +63,38 @@ static void controlAndRefresh() {
   st.heating = (millis() / UI_DEMO_PERIOD_MS) % 2 == 0;
 #endif
   ui::homeUpdate(st);
+  ui::idleUpdate(st);
 }
 
 static void onSetpointDelta(int delta) {
   s_setpoints.manualSet(s_setpoints.setpoint() + delta * SETPOINT_STEP_F);
+  const int f = static_cast<int>(lroundf(s_setpoints.setpoint()));
+  if (f != s_settings.setpointF) {
+    s_settings.setpointF = f;
+    settings_store::changed(s_settings);
+  }
   controlAndRefresh();
+}
+
+// Pushes the settings to everything that uses them.
+static void applySettings() {
+  thermo::ControlConfig cfg;
+  cfg.swingF = s_settings.swingTenths / 10.0f;
+  cfg.minOnS = MIN_ON_SECONDS;
+  cfg.minOffS = MIN_OFF_SECONDS;
+  s_controller.setConfig(cfg);
+  s_controller.setMode(s_settings.heatMode ? thermo::Mode::Heat : thermo::Mode::Off);
+  sensor::setOffset(s_settings.offsetTenths / 10.0f);
+  display::setBrightness(s_settings.brightnessPct);
+  display::setDimTimeout(s_settings.dimSeconds);
+  ui::settingsUpdate(s_settings);
+}
+
+static void onSettingStep(thermo::SettingId id, int dir) {
+  if (!thermo::stepSetting(s_settings, id, dir)) return;
+  settings_store::changed(s_settings);
+  applySettings();
+  controlAndRefresh();  // Mode Off must release the relay at once
 }
 
 void setup() {
@@ -73,23 +106,32 @@ void setup() {
 
   Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
 
-  thermo::ControlConfig cfg;
-  cfg.swingF = DEFAULT_SWING_F;
-  cfg.minOnS = MIN_ON_SECONDS;
-  cfg.minOffS = MIN_OFF_SECONDS;
-  s_controller.setConfig(cfg);
+  s_settings = settings_store::load();
+  s_setpoints = thermo::SetpointManager(static_cast<float>(s_settings.setpointF));
 
   display::begin();
-  ui::homeCreate(onSetpointDelta);
+  ui::homeCreate(onSetpointDelta, ui::settingsShow);
+  ui::settingsCreate(onSettingStep, ui::homeShow);
+  ui::idleCreate();
+  display::onDim(ui::idleShow);
+  display::onWake(ui::homeShow);
+  applySettings();
 
   if (!sensor::begin()) Serial.println("BME688 not found");
 
   controlAndRefresh();
+
+  // If loop() stops running, reset the chip; relay::begin() then starts with heat off.
+  if (esp_task_wdt_init(WATCHDOG_SECONDS, true) != ESP_OK || esp_task_wdt_add(nullptr) != ESP_OK) {
+    Serial.println("Watchdog setup FAILED");
+  }
 }
 
 void loop() {
+  esp_task_wdt_reset();
   display::loop();
   sensor::poll();
+  settings_store::poll();
 
   const uint32_t now = millis();
   if (now - s_lastControlMs >= 1000) {

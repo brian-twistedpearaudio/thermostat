@@ -51,7 +51,9 @@ static lv_obj_t* s_heatPill;
 static lv_obj_t* s_faultBox;
 static lv_obj_t* s_setCaption;
 static lv_obj_t* s_setValue;
+static lv_obj_t* s_screen;
 static void (*s_onDelta)(int) = nullptr;
+static void (*s_onSettings)() = nullptr;
 
 // y for a label so that its first line's baseline sits at `baseline`.
 static int yForBaseline(const lv_font_t* f, int baseline) {
@@ -105,10 +107,18 @@ static void makeButton(lv_obj_t* parent, int y, bool plus, int delta) {
   }
 }
 
-void homeCreate(void (*onSetpointDelta)(int delta)) {
+static void settingsEvent(lv_event_t*) {
+  if (s_onSettings) s_onSettings();
+}
+
+void homeShow() { lv_screen_load(s_screen); }
+
+void homeCreate(void (*onSetpointDelta)(int delta), void (*onSettings)()) {
   s_onDelta = onSetpointDelta;
+  s_onSettings = onSettings;
 
   lv_obj_t* scr = lv_screen_active();
+  s_screen = scr;
   lv_obj_set_style_bg_color(scr, lv_color_hex(kBg), 0);
   lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
   lv_obj_set_scrollable(scr, false);
@@ -122,6 +132,17 @@ void homeCreate(void (*onSetpointDelta)(int delta)) {
   lv_obj_set_width(s_clock, 90);
   lv_obj_set_style_text_align(s_clock, LV_TEXT_ALIGN_RIGHT, 0);
   lv_obj_set_pos(s_clock, kPad + kLeftW - 90, yForBaseline(&ui_font_body_11, kTopBaseline));
+
+  // Settings: a gear after "Inside"; the touch target is the whole top-left strip.
+  lv_obj_update_layout(inside);
+  lv_obj_t* gear = makeLabel(scr, &lv_font_montserrat_14, kMuted, LV_SYMBOL_SETTINGS);
+  lv_obj_set_pos(gear, kPad + lv_obj_get_width(inside) + 8, 13);
+  lv_obj_t* hit = lv_obj_create(scr);
+  lv_obj_remove_style_all(hit);
+  lv_obj_set_pos(hit, 0, 0);
+  lv_obj_set_size(hit, kPad + kLeftW, 48);
+  lv_obj_set_scrollable(hit, false);
+  lv_obj_add_event_cb(hit, settingsEvent, LV_EVENT_CLICKED, nullptr);
 
   // Big temperature: whole part 150 px / 600 -> 75 px SemiBold, letter-spacing -4 -> -2;
   // ".4°" 64 px -> 32 px SemiBold, muted, on the same baseline.
@@ -194,7 +215,7 @@ void homeUpdate(const HomeState& s) {
     snprintf(buf, sizeof(buf), "%d:%02d %s", h12, s.minute, s.hour < 12 ? "AM" : "PM");
     lv_label_set_text(s_clock, buf);
   } else {
-    lv_label_set_text(s_clock, "--:--");
+    lv_label_set_text(s_clock, NO_TIME_DISPLAY_TEXT);
   }
 
   // Temperature, always one decimal place, e.g. "68" + ".4°".
@@ -228,10 +249,11 @@ void homeUpdate(const HomeState& s) {
     }
   }
 
-  // Set point: always bold orange
+  // Set point: bold orange, muted while the mode is Off
+  lv_obj_set_style_text_color(s_setValue, lv_color_hex(s.modeOff ? kMuted : kHeatText), 0);
   snprintf(buf, sizeof(buf), "%d\xC2\xB0", static_cast<int>(lroundf(s.setpointF)));
   lv_label_set_text(s_setValue, buf);
-  lv_label_set_text(s_setCaption, s.overridden ? "MANUAL" : "SET");
+  lv_label_set_text(s_setCaption, s.modeOff ? "HEAT OFF" : (s.overridden ? "MANUAL" : "SET"));
 }
 
 }  // namespace ui

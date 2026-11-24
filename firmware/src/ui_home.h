@@ -10,6 +10,7 @@ struct HomeState {
   float humidity = 0;
   float setpointF = 68;
   bool heating = false;
+  bool modeOff = false;      // mode is Off: the set point is not in use
   bool overridden = false;   // manual change in force (label wording comes with the schedule UI)
   bool timeValid = false;
   uint8_t hour = 0;          // 0..23 local
@@ -17,7 +18,9 @@ struct HomeState {
 };
 
 // onSetpointDelta is called with +1 or -1 when the user presses + or -.
-void homeCreate(void (*onSetpointDelta)(int delta));
+// onSettings is called when the top-left of the screen (gear) is tapped.
+void homeCreate(void (*onSetpointDelta)(int delta), void (*onSettings)());
+void homeShow();
 void homeUpdate(const HomeState& s);
 
 }  // namespace ui

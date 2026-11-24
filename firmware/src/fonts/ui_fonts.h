@@ -7,6 +7,7 @@ extern "C" {
 #endif
 
 LV_FONT_DECLARE(ui_font_temp_75)  // Montserrat 600, 75 px
+LV_FONT_DECLARE(ui_font_temp_60)  // Montserrat 600, 60 px
 LV_FONT_DECLARE(ui_font_frac_32)  // Montserrat 600, 32 px
 LV_FONT_DECLARE(ui_font_set_26)  // Montserrat 700, 26 px
 LV_FONT_DECLARE(ui_font_body_11)  // Montserrat 500, 11 px

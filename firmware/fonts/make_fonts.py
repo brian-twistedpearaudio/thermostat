@@ -20,6 +20,7 @@ DIGITS = list("0123456789")
 # name, weight, pixel size, characters
 FONTS = [
     ("ui_font_temp_75", 600, 75, DIGITS + ["-"]),                  # inside temperature, whole part
+    ("ui_font_temp_60", 600, 60, DIGITS + ["-"]),                  # idle screen temperature
     ("ui_font_frac_32", 600, 32, DIGITS + ["-", ".", "°"]),   # ".4°"
     ("ui_font_set_26", 700, 26, DIGITS + ["-", "°"]),         # set point
     ("ui_font_body_11", 500, 11, ASCII + ["°", "·"]),    # Inside, clock, humidity

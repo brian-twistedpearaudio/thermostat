@@ -12,6 +12,8 @@ static Adafruit_BME680 s_bme(&Wire);
 static Reading s_reading;
 static bool s_present = false;
 static bool s_pending = false;
+static float s_rawF = 0;     // smoothed, before the offset
+static float s_offsetF = 0;
 static bool s_haveSmoothed = false;
 static uint32_t s_endTimeMs = 0;
 static uint32_t s_lastStartMs = 0;
@@ -64,19 +66,25 @@ void poll() {
   s_pending = false;
   if (!s_bme.endReading()) { fail(); return; }
 
-  const float tempF = s_bme.temperature * 9.0f / 5.0f + 32.0f + TEMP_OFFSET_F;
+  const float tempF = s_bme.temperature * 9.0f / 5.0f + 32.0f;
   if (isnan(tempF) || tempF < -20.0f || tempF > 130.0f) { fail(); return; }
 
   s_failures = 0;
   if (s_haveSmoothed) {
-    s_reading.tempF += TEMP_SMOOTHING * (tempF - s_reading.tempF);
+    s_rawF += TEMP_SMOOTHING * (tempF - s_rawF);
   } else {
-    s_reading.tempF = tempF;
+    s_rawF = tempF;
     s_haveSmoothed = true;
   }
+  s_reading.tempF = s_rawF + s_offsetF;
   s_reading.humidity = s_bme.humidity;
   s_reading.pressureHpa = s_bme.pressure / 100.0f;
   s_reading.ok = true;
+}
+
+void setOffset(float offsetF) {
+  s_offsetF = offsetF;
+  s_reading.tempF = s_rawF + s_offsetF;
 }
 
 const Reading& latest() { return s_reading; }

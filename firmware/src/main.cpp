@@ -1,5 +1,5 @@
-// Thermostat firmware — sensor, control, relay, home and settings screens.
-// Not yet included: logging, graph/info screens, Wi-Fi, REST API.
+// Thermostat firmware — sensor, control, relay, screens, Wi-Fi and network time.
+// Not yet included: logging, graph/info screens, REST API.
 #include <Arduino.h>
 #include <Wire.h>
 #include <esp_task_wdt.h>
@@ -9,6 +9,7 @@
 #include "config.h"
 #include "control.h"
 #include "display.h"
+#include "net.h"
 #include "pins.h"
 #include "relay.h"
 #include "schedule.h"
@@ -17,6 +18,7 @@
 #include "ui_home.h"
 #include "ui_idle.h"
 #include "ui_settings.h"
+#include "ui_wifi.h"
 
 static thermo::Controller s_controller;
 static thermo::Schedule s_schedule;  // empty until defaults are supplied
@@ -31,7 +33,7 @@ static uint32_t uptimeSeconds() {
 
 // Runs the schedule, control logic and relay, then refreshes the screen.
 static void controlAndRefresh() {
-  // Local time is only valid once the clock has been set (NTP arrives with Wi-Fi).
+  // Local time is only valid once the clock has been set by network time.
   struct tm tmNow = {};
   const time_t now = time(nullptr);
   const bool timeValid = now > 1700000000;
@@ -97,6 +99,20 @@ static void onSettingStep(thermo::SettingId id, int dir) {
   controlAndRefresh();  // Mode Off must release the relay at once
 }
 
+static void refreshWifi() {
+  const net::Status w = net::status();
+  ui::wifiUpdate(w);
+  ui::settingsSetWifi(ui::wifiSummary(w));
+  display::keepAwake(w.state == net::State::Starting || w.state == net::State::Hotspot ||
+                     w.state == net::State::Trying);
+
+  static bool timeReported = false;
+  if (!timeReported && time(nullptr) > 1700000000) {
+    timeReported = true;
+    Serial.println("Clock is set");
+  }
+}
+
 void setup() {
   relay::begin();  // first: make sure the boiler call is off
 
@@ -111,7 +127,8 @@ void setup() {
 
   display::begin();
   ui::homeCreate(onSetpointDelta, ui::settingsShow);
-  ui::settingsCreate(onSettingStep, ui::homeShow);
+  ui::settingsCreate(onSettingStep, ui::homeShow, ui::wifiShow);
+  ui::wifiCreate(ui::settingsShow);
   ui::idleCreate();
   display::onDim(ui::idleShow);
   display::onWake(ui::homeShow);
@@ -120,6 +137,7 @@ void setup() {
   if (!sensor::begin()) Serial.println("BME688 not found");
 
   controlAndRefresh();
+  net::begin();
 
   // If loop() stops running, reset the chip; relay::begin() then starts with heat off.
   if (esp_task_wdt_init(WATCHDOG_SECONDS, true) != ESP_OK || esp_task_wdt_add(nullptr) != ESP_OK) {
@@ -137,6 +155,7 @@ void loop() {
   if (now - s_lastControlMs >= 1000) {
     s_lastControlMs = now;
     controlAndRefresh();
+    refreshWifi();
   }
   delay(5);
 }

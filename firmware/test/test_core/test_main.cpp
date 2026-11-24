@@ -4,6 +4,7 @@
 #include "control.h"
 #include "schedule.h"
 #include "settings.h"
+#include "wifi_text.h"
 
 using namespace thermo;
 
@@ -206,6 +207,23 @@ static void test_settings_text() {
   TEST_ASSERT_EQUAL_STRING("Never", b);
 }
 
+// ---------- Wi-Fi setup ----------
+
+static void test_wifi_validation() {
+  TEST_ASSERT_TRUE(validWifi("Home", "12345678"));
+  TEST_ASSERT_TRUE(validWifi("Open network", ""));
+  TEST_ASSERT_TRUE(validWifi(std::string(32, 'a'), std::string(63, 'b')));
+  TEST_ASSERT_FALSE(validWifi("", "12345678"));
+  TEST_ASSERT_FALSE(validWifi(std::string(33, 'a'), "12345678"));
+  TEST_ASSERT_FALSE(validWifi("Home", "1234567"));
+  TEST_ASSERT_FALSE(validWifi("Home", std::string(64, 'b')));
+  TEST_ASSERT_FALSE(validWifi("Home", "12345678\n"));
+}
+
+static void test_html_escape() {
+  TEST_ASSERT_EQUAL_STRING("&lt;b&gt;&quot;A&amp;B&#39;s&quot;", htmlEscape("<b>\"A&B's\"").c_str());
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_no_heat_until_min_off_after_boot);
@@ -224,5 +242,7 @@ int main(int, char**) {
   RUN_TEST(test_settings_sanitize);
   RUN_TEST(test_settings_step_limits);
   RUN_TEST(test_settings_text);
+  RUN_TEST(test_wifi_validation);
+  RUN_TEST(test_html_escape);
   return UNITY_END();
 }

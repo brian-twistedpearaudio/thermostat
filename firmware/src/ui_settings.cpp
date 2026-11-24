@@ -38,6 +38,8 @@ static lv_obj_t* s_list;
 static lv_obj_t* s_modeLabel;
 static void (*s_onStep)(thermo::SettingId, int) = nullptr;
 static void (*s_onBack)() = nullptr;
+static void (*s_onWifi)() = nullptr;
+static lv_obj_t* s_wifiValue;
 
 static lv_obj_t* makeLabel(lv_obj_t* parent, uint32_t color, const char* text) {
   lv_obj_t* l = lv_label_create(parent);
@@ -70,6 +72,19 @@ static void backEvent(lv_event_t*) {
   if (s_onBack) s_onBack();
 }
 
+static void wifiEvent(lv_event_t*) {
+  if (s_onWifi) s_onWifi();
+}
+
+static lv_obj_t* makeRow(int index) {
+  lv_obj_t* row = lv_obj_create(s_list);
+  lv_obj_remove_style_all(row);
+  lv_obj_set_pos(row, 0, index * kRowH);
+  lv_obj_set_size(row, kW, kRowH);
+  lv_obj_set_scrollable(row, false);
+  return row;
+}
+
 static void addStepButton(lv_obj_t* row, int x, int index, bool up) {
   lv_obj_t* b = makeButton(row, x, (kRowH - kBtnH) / 2, kBtnW, kBtnH, up ? LV_SYMBOL_PLUS : LV_SYMBOL_MINUS);
   void* ud = reinterpret_cast<void*>(static_cast<intptr_t>(index * 2 + (up ? 1 : 0)));
@@ -77,9 +92,10 @@ static void addStepButton(lv_obj_t* row, int x, int index, bool up) {
   lv_obj_add_event_cb(b, stepEvent, LV_EVENT_LONG_PRESSED_REPEAT, ud);  // hold to keep stepping
 }
 
-void settingsCreate(void (*onStep)(thermo::SettingId, int), void (*onBack)()) {
+void settingsCreate(void (*onStep)(thermo::SettingId, int), void (*onBack)(), void (*onWifi)()) {
   s_onStep = onStep;
   s_onBack = onBack;
+  s_onWifi = onWifi;
 
   s_screen = lv_obj_create(nullptr);
   lv_obj_set_style_bg_color(s_screen, lv_color_hex(kBg), 0);
@@ -101,12 +117,7 @@ void settingsCreate(void (*onStep)(thermo::SettingId, int), void (*onBack)()) {
   const int plusX = kW - kPad - kBtnW;
   const int minusX = plusX - kBtnGap - kBtnW;
   for (int i = 0; i < kRowCount; ++i) {
-    lv_obj_t* row = lv_obj_create(s_list);
-    lv_obj_remove_style_all(row);
-    lv_obj_set_pos(row, 0, i * kRowH);
-    lv_obj_set_size(row, kW, kRowH);
-    lv_obj_set_scrollable(row, false);
-
+    lv_obj_t* row = makeRow(i);
     lv_obj_set_pos(makeLabel(row, kMuted, s_rows[i].name), kPad, 8);
     s_rows[i].value = makeLabel(row, kHeatText, "");
     lv_obj_set_pos(s_rows[i].value, kPad, 28);
@@ -122,7 +133,17 @@ void settingsCreate(void (*onStep)(thermo::SettingId, int), void (*onBack)()) {
       addStepButton(row, plusX, i, true);
     }
   }
+
+  // Last row: Wi-Fi, which opens its own screen.
+  lv_obj_t* row = makeRow(kRowCount);
+  lv_obj_set_pos(makeLabel(row, kMuted, "Wi-Fi"), kPad, 8);
+  s_wifiValue = makeLabel(row, kHeatText, "");
+  lv_obj_set_pos(s_wifiValue, kPad, 28);
+  lv_obj_t* open = makeButton(row, minusX, (kRowH - kBtnH) / 2, kBtnW * 2 + kBtnGap, kBtnH, "Open");
+  lv_obj_add_event_cb(open, wifiEvent, LV_EVENT_CLICKED, nullptr);
 }
+
+void settingsSetWifi(const char* text) { lv_label_set_text(s_wifiValue, text); }
 
 void settingsUpdate(const thermo::Settings& s) {
   char buf[16];

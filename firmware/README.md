@@ -13,8 +13,10 @@ PlatformIO project for the LilyGO T-Display-S3 Touch. Open this `firmware` folde
 - Settings and the set point are saved in flash about 2 s after the last change
 - When idle the screen dims and shows only the temperature (red on a sensor fault) and time; the first touch only wakes it, to Home
 - Watchdog: a main loop hung for 8 s resets the board
+- Wi-Fi, set up from Settings > Wi-Fi through a temporary hotspot and web page, with a QR code on the screen
+- Clock from network time (US Eastern, with daylight saving)
 
-Not yet included: 5-minute logging, Graph / Info screens, Wi-Fi and clock, REST API, server uplink, OTA.
+Not yet included: 5-minute logging, Graph / Info screens, REST API, server uplink, OTA.
 
 ## Commands
 
@@ -26,9 +28,10 @@ Not yet included: 5-minute logging, Graph / Info screens, Wi-Fi and clock, REST 
 
 ## Status of checks
 
-- `lib/thermo_core` (control and schedule logic): 13 control and schedule tests passed earlier. 3 settings tests added since; they compile, but have **not been run** (no PC compiler yet).
+- `lib/thermo_core` (control and schedule logic): 13 control and schedule tests passed earlier. 3 settings and 2 Wi-Fi text tests added since; they compile, but have **not been run** (no PC compiler yet).
 - Firmware builds and boots on the bare T-Display-S3 board (no sensor or relay) with no resets in 25 s. Set point +, the settings screen (scrolling and buttons), saving settings, Off mode display, the look of the dimmed screen and wake-up touch were checked by hand.
-- **Not yet confirmed on hardware:** a watchdog reset, sensor readings, heating (including Off mode stopping a heat call) and the relay.
+- Wi-Fi setup through the hotspot was checked on the board: a failed first attempt was reported and setup could be repeated, the second attempt connected, and the log showed network time setting the clock. The `request handler not found` log lines during setup are harmless (requests for pages that do not exist, answered by a redirect to the setup page).
+- **Not yet confirmed on hardware:** reconnecting after a reset or router outage, keeping the saved network when a new one fails, a watchdog reset, sensor readings, heating (including Off mode stopping a heat call) and the relay.
 
 ## Check on first power-up
 
@@ -45,13 +48,16 @@ Not yet included: 5-minute logging, Graph / Info screens, Wi-Fi and clock, REST 
 - After power-up or reset the boiler is not called for the first 3 minutes (minimum off time).
 - With no sensor the screen shows a fixed 69.4° placeholder and the fault box, and heat stays off.
 - A sensor fault turns heat off immediately and shows on the screen.
-- The clock shows a fixed 12:00 PM placeholder until Wi-Fi and network time are added (`NO_TIME_DISPLAY_TEXT` in `include/config.h`; set it to `--:--` before real use).
+- Wi-Fi is 2.4 GHz only. The setup hotspot uses a new password each time, shown only on the screen, and closes on Back, after 10 minutes, or once a network is entered. A new network replaces the saved one only after it connects.
+- The Wi-Fi password is stored unencrypted in the board's flash.
+- Heating control does not depend on Wi-Fi; the network runs in its own task.
+- The clock shows a fixed 12:00 PM placeholder until network time is received (`NO_TIME_DISPLAY_TEXT` in `include/config.h`; set it to `--:--` before real use).
 
 ## Layout
 
 ```
 include/           pins.h, config.h, lv_conf.h
-lib/thermo_core/   control, schedule and settings logic (no hardware dependencies)
-src/               main, display + touch, sensor, relay, stored settings, home, settings and idle screens
+lib/thermo_core/   control, schedule, settings and Wi-Fi text logic (no hardware dependencies)
+src/               main, display + touch, sensor, relay, stored settings, Wi-Fi + time, home, settings, Wi-Fi and idle screens
 test/test_core/    unit tests for thermo_core
 ```

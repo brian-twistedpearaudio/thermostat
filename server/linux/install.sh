@@ -33,11 +33,15 @@ done
 [ -f "$published/$exe" ] && [ -f "$published/wwwroot/index.html" ] || fail "$published is not a copy published for Linux."
 
 # The processor type in the program's header: 62 is x86-64, 183 is ARM64.
-machine=$(od -An -tu1 -j18 -N1 "$published/$exe" | tr -d " ")
-case $(uname -m)/$machine in
-    x86_64/62 | aarch64/183) ;;
-    *) fail "This copy is for another processor than $(uname -m)." ;;
+case $(uname -m) in
+    x86_64) need=linux-x64 header=62 ;;
+    aarch64) need=linux-arm64 header=183 ;;
+    *) fail "This processor, $(uname -m), is not supported: only x86_64 and aarch64." ;;
 esac
+# 32-bit Raspberry Pi OS can have a 64-bit kernel, which says aarch64.
+[ "$(getconf LONG_BIT)" = 64 ] || fail "This is a 32-bit system. A 64-bit one is needed."
+machine=$(od -An -tu1 -j18 -N1 "$published/$exe" | tr -d " ")
+[ "$machine" = "$header" ] || fail "This copy is for another processor. Publish with: -r $need"
 
 [ ! -L "$data" ] || fail "$data is a link. Remove it first."
 has_data=

@@ -51,13 +51,13 @@ Warnings and errors go to Event Viewer, **Windows Logs**, **Application**.
 
 ## Run on Linux
 
-For a 64-bit Intel or AMD PC or VM with systemd and glibc, such as Debian, Ubuntu or Fedora. The host does not need .NET. Publish on any PC with the .NET 10 SDK:
+For a 64-bit PC or VM (Intel or AMD), or a Raspberry Pi with 64-bit Raspberry Pi OS. It needs systemd and glibc, such as Debian, Ubuntu or Fedora have. The host does not need .NET. Publish on any PC with the .NET 10 SDK, `linux-x64` for the PC or VM or `linux-arm64` for the Pi (`uname -m` on the host says `x86_64` or `aarch64`):
 
 ```powershell
 dotnet publish -c Release -r linux-x64 --self-contained
 ```
 
-Copy the folder `bin/Release/net10.0/linux-x64/publish` to the host, for example with `scp -r`. Copy the whole folder into a new one each time. In it, on the host:
+Copy the folder `bin/Release/net10.0/linux-x64/publish` (or `linux-arm64`) to the host, for example with `scp -r`. Copy the whole folder into a new one each time. In it, on the host:
 
 ```bash
 sudo bash linux/install.sh --copy-from ~/data    # or --new-data to start with no readings
@@ -69,7 +69,9 @@ To update, publish and copy again, then `sudo bash linux/update.sh`. To uninstal
 
 The scripts do not change the firewall. Allow inbound TCP 5080 from the home network only.
 
-For 64-bit ARM, publish `linux-arm64` instead (not tested). Not supported: 32-bit systems, Alpine (musl) and systems without systemd.
+On a Raspberry Pi, keep the database on an SSD or a good-quality SD card: it is written to every few minutes.
+
+Not supported: 32-bit systems (32-bit Raspberry Pi OS included), Alpine (musl) and systems without systemd.
 
 ### Move from the Windows PC
 

@@ -63,4 +63,31 @@ svg text { font-size: 12px; fill: var(--muted); font-variant-numeric: tabular-nu
 table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
 th, td { text-align: left; padding: 3px 14px 3px 0; white-space: nowrap; border-bottom: 1px solid var(--grid); }
 summary { cursor: pointer; }
+.thermostat { width: 100%; }
+.state { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; padding-left: 47px; margin-top: 3px; }
+.state > span { flex-basis: 100%; }
+.state button { padding: 2px 9px; }
+.mark { display: inline-block; border: 1px solid var(--axis); border-radius: 6px; padding: 0 6px; font-size: 13px; }
+/* Controls of one thermostat */
+dialog { width: min(440px, calc(100vw - 20px)); max-width: none; max-height: calc(100vh - 20px); padding: 16px; overflow-y: auto;
+  background: var(--surface); color: var(--text); border: 1px solid var(--axis); border-radius: 8px; }
+dialog::backdrop { background: rgba(0, 0, 0, .45); }
+dialog header { gap: 12px; margin-bottom: 4px; }
+dialog h2 { font-size: 19px; margin: 0; overflow-wrap: anywhere; min-width: 0; }
+dialog p { margin: 4px 0; color: var(--text2); }
+dialog p:empty { margin: 0; }
+dialog .problem { color: var(--text); font-weight: 600; }
+dialog small { color: var(--text2); }
+.setpoint { display: flex; justify-content: center; align-items: center; gap: 18px; margin: 10px 0 4px; }
+.setpoint button { width: 64px; height: 64px; font-size: 30px; line-height: 1; padding: 0; touch-action: manipulation; }
+.setpoint output { font-size: 46px; font-variant-numeric: tabular-nums; }
+#c-set-status, #c-lasts { display: block; text-align: center; }
+#c-set-status { min-height: 20px; }
+.field { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 2px 10px; align-items: center; margin: 10px 0; }
+.field small { grid-column: 2; }
+.field input:not([type=radio]) { min-width: 0; width: 100%; }
+.modes { display: flex; gap: 18px; }
+.event { display: flex; flex-wrap: wrap; gap: 6px 5px; align-items: center; margin-bottom: 6px; }
+.event input[type=number] { width: 58px; }
+#c-schedule-status { margin-left: 8px; }
 #message { color: var(--text2); }

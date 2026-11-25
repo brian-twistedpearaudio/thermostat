@@ -1,6 +1,6 @@
 # Thermostat server
 
-ASP.NET Core (.NET 10) with SQLite. Stores the 5-minute records the thermostats send and returns the history of each.
+ASP.NET Core (.NET 10) with SQLite. Stores the 5-minute records the thermostats send, returns the history of each, and keeps their configuration so it can be changed from here.
 
 ## Run
 
@@ -95,13 +95,18 @@ Every call except `/health` needs the header `X-Api-Token`. Times are UTC Unix s
 | GET | `/api/v1/devices` | Known thermostats |
 | GET | `/api/v1/devices/{id}/readings?from=&to=&bucket=` | History, `to` exclusive, last 24 hours by default. `bucket` (seconds, 300 or more) combines records, with minimum and maximum temperature |
 | GET | `/api/v1/devices/{id}/graph?from=&to=&bucket=` | Temperature and set point as short text, up to 400 points, for the thermostat's Graph screen |
+| POST | `/api/v1/devices/{id}/sync` | A thermostat's regular call: its configuration and state as text, answered with the configuration to use |
+| GET | `/api/v1/devices/{id}/config` | Configuration and state of a thermostat |
+| PUT | `/api/v1/devices/{id}/config` | Change any of set point, mode, swing, sensor offset, schedule and name |
+
+The last three are described in [`docs/sync.md`](../docs/sync.md).
 
 A thermostat's ID is its Wi-Fi MAC address in hex. A history has at most 10,000 points; `truncated` is true if there were more.
 
 ## Security
 
-One shared token over plain HTTP, for a home network only. Do not open the port to the internet.
+One shared token over plain HTTP, for a home network only. The token allows changing the heating as well as reading the history: anyone who has it can set the thermostats. Do not open the port to the internet.
 
 ## Not yet included
 
-CSV export, control of the thermostat.
+CSV export.

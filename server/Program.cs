@@ -1,12 +1,16 @@
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Hosting.WindowsServices;
 using Thermostat.Server;
 
 const int MaxBatch = 500;
 const int MaxPoints = 10_000;
 const int MaxGraphPoints = 400;
+const int MaxSync = 1024;
 const long MaxRange = 10L * 366 * 86400;
 
 // A published copy has its files beside the program, whatever folder it is started from.
@@ -123,7 +127,89 @@ api.MapGet("/devices/{id}/graph", (string id, long from, long to, long bucket) =
     return Results.Text(text.ToString());
 });
 
+// Each thermostat's last call, kept in memory only.
+var lastSync = new ConcurrentDictionary<string, LastSync>();
+
+// docs/sync.md is the contract for these three. The bodies are read here, after the token check.
+api.MapPost("/devices/{id}/sync", async (string id, HttpContext context) =>
+{
+    context.Features.Get<IHttpMaxRequestBodySizeFeature>()!.MaxRequestBodySize = MaxSync;
+    using var body = new MemoryStream();
+    try
+    {
+        await context.Request.Body.CopyToAsync(body);
+    }
+    catch (BadHttpRequestException e)
+    {
+        return Results.StatusCode(e.StatusCode);
+    }
+    if (!Patterns.DeviceId().IsMatch(id)) return Results.BadRequest(new { error = "device" });
+    // Latin1 keeps each byte as it is; anything not ASCII is then found in the check.
+    var request = ConfigSync.Parse(Encoding.Latin1.GetString(body.GetBuffer(), 0, (int)body.Length));
+    if (request is null) return Results.BadRequest(new { error = "sync" });
+
+    var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+    var fields = store.Merge(id, now, request.Fields);
+    lastSync[id] = new LastSync(now, request);
+    return Results.Text(ConfigSync.Format(fields));
+});
+
+api.MapGet("/devices/{id}/config", (string id) => store.HasDevice(id) ? Config(id) : Results.NotFound());
+
+api.MapPut("/devices/{id}/config", async (string id, HttpContext context) =>
+{
+    if (!store.HasDevice(id)) return Results.NotFound();
+    var values = new Dictionary<string, string>();
+    var at = "body";
+    try
+    {
+        using var json = await JsonDocument.ParseAsync(context.Request.Body);
+        if (json.RootElement.ValueKind != JsonValueKind.Object) return Results.BadRequest(new { error = at });
+        foreach (var property in json.RootElement.EnumerateObject())
+        {
+            at = "body";
+            at = property.Name;
+            var value = property.Value.ValueKind == JsonValueKind.String ? property.Value.GetString()! : null;
+            if (value is null || !ConfigSync.IsValid(at, value) || !values.TryAdd(at, value))
+            {
+                return Results.BadRequest(new { error = at });
+            }
+        }
+    }
+    // InvalidOperationException: text that is not valid Unicode.
+    catch (Exception e) when (e is JsonException or InvalidOperationException)
+    {
+        return Results.BadRequest(new { error = at });
+    }
+
+    var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+    return store.Change(id, now, values) ? Config(id) : Results.Conflict();
+});
+
 app.Run();
+
+IResult Config(string id)
+{
+    var last = lastSync.GetValueOrDefault(id);
+    var fields = store.Config(id);
+    // A dictionary keeps the order the fields are added in.
+    var shown = fields.Count == 0 ? null : ConfigSync.Keys.ToDictionary(key => key, key => new
+    {
+        fields[key].Value,
+        fields[key].Changed,
+        Applied = last is not null && last.Request.Fields[key] == fields[key],
+    });
+    var state = last is null ? null : new
+    {
+        last.Time,
+        Age = Math.Max(0, DateTimeOffset.UtcNow.ToUnixTimeSeconds() - last.Time),
+        TempF = last.Request.TempTenths / 10.0,
+        SetpointF = last.Request.SetpointTenths / 10.0,
+        last.Request.Heating,
+        last.Request.Manual,
+    };
+    return Results.Ok(new { fields = shown, state });
+}
 
 static int? Tenths(double? v) => v is { } x ? (int)Math.Round(x * 10) : null;
 
@@ -137,6 +223,8 @@ static bool IsValid(Reading? r, long now) =>
     && r.HeatPct is >= 0 and <= 100;
 
 public record Upload(string? Device, string? Name, List<Reading?>? Readings);
+
+public record LastSync(long Time, SyncRequest Request);
 
 public static partial class Patterns
 {

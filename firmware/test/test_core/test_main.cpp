@@ -11,6 +11,7 @@
 #include "log_interval.h"
 #include "schedule.h"
 #include "settings.h"
+#include "sync_text.h"
 #include "upload_text.h"
 #include "wifi_text.h"
 
@@ -459,6 +460,87 @@ static void test_graph_scale() {
   TEST_ASSERT_EQUAL_INT(100, step);
 }
 
+static SyncFields syncExample() {
+  SyncFields f;
+  const char* values[] = {"70", "heat", "10", "-5", "0600=68,2200=62", "The Den"};
+  for (int i = 0; i < kSyncCount; ++i) {
+    f.value[i] = values[i];
+    f.time[i] = 1795640000 + i;
+  }
+  return f;
+}
+
+static void test_sync_values() {
+  const SyncField f[] = {kSyncSet, kSyncSet, kSyncMode, kSyncSwing, kSyncOffset, kSyncOffset, kSyncSchedule,
+                         kSyncSchedule, kSyncName, kSyncName};
+  const char* good[] = {"45", "85", "off", "30", "-100", "0", "-", "0000=45,0001=46,0002=47,0003=48,0004=49,2359=85",
+                        "", "0123456789abcdef"};
+  for (int i = 0; i < 10; ++i) TEST_ASSERT_TRUE_MESSAGE(validSyncValue(f[i], good[i]), good[i]);
+  for (const char* v : {"", "44", "86", "070", "+70", "70.5", "70 ", "x"}) TEST_ASSERT_FALSE(validSyncValue(kSyncSet, v));
+  for (const char* v : {"", "Heat", "cool"}) TEST_ASSERT_FALSE(validSyncValue(kSyncMode, v));
+  for (const char* v : {"0", "7", "35", "05"}) TEST_ASSERT_FALSE(validSyncValue(kSyncSwing, v));
+  for (const char* v : {"-101", "101", "-0", "-"}) TEST_ASSERT_FALSE(validSyncValue(kSyncOffset, v));
+  for (const char* v : {"", "600=68", "2400=68", "0660=68", "0600=44", "0600=68,", ",0600=68", "0600=68,0600=70",
+                        "0700=68,0600=70", "0600=", "0600=68, 0700=70",
+                        "0000=45,0001=46,0002=47,0003=48,0004=49,0005=50,0006=51"}) {
+    TEST_ASSERT_FALSE_MESSAGE(validSyncValue(kSyncSchedule, v), v);
+  }
+  for (const char* v : {" a", "a ", "0123456789abcdefg", "a\tb", "caf\xC3\xA9"}) TEST_ASSERT_FALSE(validSyncValue(kSyncName, v));
+  Schedule s;
+  TEST_ASSERT_TRUE(parseSchedule("0600=68,2230=62", s));
+  TEST_ASSERT_EQUAL_UINT(2, s.count());
+  TEST_ASSERT_EQUAL_UINT(22 * 60 + 30, s.entry(1).minuteOfDay);
+  TEST_ASSERT_EQUAL_FLOAT(62, s.entry(1).setpointF);
+  TEST_ASSERT_FALSE(parseSchedule("bad", s));
+  TEST_ASSERT_EQUAL_UINT(2, s.count());
+}
+
+static void test_sync_request() {
+  SyncFields f = syncExample();
+  f.time[kSyncSet] = kSyncUnknown;
+  SyncState st;
+  st.setpointF = 70;
+  TEST_ASSERT_EQUAL_STRING(
+      "sync 1\nset -1 70\nmode 1795640001 heat\nswing 1795640002 10\noffset 1795640003 -5\n"
+      "schedule 1795640004 0600=68,2200=62\nname 1795640005 The Den\nstate - 700 0 0\nend\n",
+      syncRequest(f, st).c_str());
+  f.value[kSyncName] = "";
+  st.sensorOk = st.heating = st.manual = true;
+  st.tempF = 72.14f;
+  const std::string t = syncRequest(f, st);
+  TEST_ASSERT_TRUE(t.find("name 1795640005 \nstate 721 700 1 1\nend\n") != std::string::npos);
+}
+
+static void test_sync_reply() {
+  const std::string good =
+      "sync 1\nset 1795640000 71\nmode 0 off\nswing 5 15\noffset 6 0\nschedule 7 -\nname 8 My  Den\nend\n";
+  SyncFields f = syncExample();
+  TEST_ASSERT_TRUE(parseSyncReply(good, f));
+  TEST_ASSERT_EQUAL_STRING("71", f.value[kSyncSet].c_str());
+  TEST_ASSERT_EQUAL_STRING("off", f.value[kSyncMode].c_str());
+  TEST_ASSERT_EQUAL_STRING("My  Den", f.value[kSyncName].c_str());
+  TEST_ASSERT_TRUE(f.time[kSyncSet] == 1795640000 && f.time[kSyncName] == 8);
+
+  for (size_t n = 0; n < good.size(); ++n) TEST_ASSERT_FALSE(parseSyncReply(good.substr(0, n), f));  // cut off
+  TEST_ASSERT_FALSE(parseSyncReply(good + "x", f));
+  const char* swaps[][2] = {{"sync 1", "sync 2"}, {" 71", " 99"}, {"set 1", "set -1"}, {"mode 0 off", "mode 0 on"},
+                            {"swing 5", "swing x"}, {"offset 6", "offset  6"}, {"mode", "name"}, {"schedule 7 -", "schedule 7"}};
+  for (auto& w : swaps) {
+    std::string bad = good;
+    bad.replace(bad.find(w[0]), strlen(w[0]), w[1]);
+    TEST_ASSERT_FALSE_MESSAGE(parseSyncReply(bad, f), w[1]);
+  }
+  TEST_ASSERT_EQUAL_STRING("71", f.value[kSyncSet].c_str());  // unchanged by bad replies
+}
+
+static void test_sync_change_time() {
+  TEST_ASSERT_TRUE(syncChangeTime(0, true, 1795640000) == 1795640000);
+  TEST_ASSERT_TRUE(syncChangeTime(1795640000, true, 1795640000) == 1795640001);
+  TEST_ASSERT_TRUE(syncChangeTime(1795640009, true, 1795640000) == 1795640010);
+  TEST_ASSERT_TRUE(syncChangeTime(1795640000, false, 5) == kSyncUnknown);
+  TEST_ASSERT_TRUE(syncChangeTime(kSyncUnknown, true, 1795640000) == 1795640000);
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_no_heat_until_min_off_after_boot);
@@ -489,5 +571,9 @@ int main(int, char**) {
   RUN_TEST(test_upload_json);
   RUN_TEST(test_graph_parse);
   RUN_TEST(test_graph_scale);
+  RUN_TEST(test_sync_values);
+  RUN_TEST(test_sync_request);
+  RUN_TEST(test_sync_reply);
+  RUN_TEST(test_sync_change_time);
   return UNITY_END();
 }

@@ -58,6 +58,13 @@ public class ReadingStore
                 partial INTEGER NOT NULL,
                 PRIMARY KEY (device, time)
             ) WITHOUT ROWID;
+            CREATE TABLE IF NOT EXISTS config (
+                device TEXT NOT NULL,
+                field TEXT NOT NULL,
+                value TEXT NOT NULL,
+                changed INTEGER NOT NULL,
+                PRIMARY KEY (device, field)
+            ) WITHOUT ROWID;
             """;
         cmd.ExecuteNonQuery();
     }
@@ -80,7 +87,8 @@ public class ReadingStore
             cmd.Transaction = tx;
             cmd.CommandText = """
                 INSERT INTO devices (id, name, last_seen) VALUES ($id, $name, $now)
-                ON CONFLICT (id) DO UPDATE SET name = excluded.name, last_seen = excluded.last_seen
+                ON CONFLICT (id) DO UPDATE SET last_seen = excluded.last_seen, name =
+                    COALESCE((SELECT value FROM config WHERE device = $id AND field = 'name'), excluded.name)
                 """;
             cmd.Parameters.AddWithValue("$id", device);
             cmd.Parameters.AddWithValue("$name", name);
@@ -141,6 +149,97 @@ public class ReadingStore
         cmd.Parameters.AddWithValue("$id", device);
         return (long)cmd.ExecuteScalar()! > 0;
     }
+
+    /// <summary>Takes the newer of each field sent and stored, and returns what is then stored.</summary>
+    public Dictionary<string, Field> Merge(string device, long now, IReadOnlyDictionary<string, Field> sent)
+    {
+        using var db = Open();
+        // Locked from the start, so nothing can change between the read and the writes.
+        using var tx = db.BeginTransaction(deferred: false);
+        var fields = Config(db, tx, device);
+        foreach (var (key, field) in sent)
+        {
+            var stored = fields.GetValueOrDefault(key);
+            var limit = Later(now, stored);
+            var time = field.Changed == -1 ? limit : Math.Min(field.Changed, limit);
+            if (stored is null || time > stored.Changed) Put(db, tx, device, fields, key, new Field(field.Value, time));
+        }
+
+        using var cmd = db.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = """
+            INSERT INTO devices (id, name, last_seen) VALUES ($id, $name, $now)
+            ON CONFLICT (id) DO UPDATE SET name = excluded.name, last_seen = excluded.last_seen
+            """;
+        cmd.Parameters.AddWithValue("$id", device);
+        cmd.Parameters.AddWithValue("$name", fields["name"].Value);
+        cmd.Parameters.AddWithValue("$now", now);
+        cmd.ExecuteNonQuery();
+
+        tx.Commit();
+        return fields;
+    }
+
+    /// <summary>Stores values changed now. Returns false, storing nothing, if the device has no configuration yet.</summary>
+    public bool Change(string device, long now, IReadOnlyDictionary<string, string> values)
+    {
+        using var db = Open();
+        using var tx = db.BeginTransaction(deferred: false);
+        var fields = Config(db, tx, device);
+        if (fields.Count == 0) return false;
+        foreach (var (key, value) in values)
+        {
+            // The same set point again is a change: it restarts a manual change.
+            if (key != "set" && value == fields[key].Value) continue;
+            Put(db, tx, device, fields, key, new Field(value, Later(now, fields[key])));
+        }
+
+        using var cmd = db.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = "UPDATE devices SET name = $name WHERE id = $id";
+        cmd.Parameters.AddWithValue("$id", device);
+        cmd.Parameters.AddWithValue("$name", fields["name"].Value);
+        cmd.ExecuteNonQuery();
+
+        tx.Commit();
+        return true;
+    }
+
+    /// <summary>Empty if the device has never synced.</summary>
+    public Dictionary<string, Field> Config(string device)
+    {
+        using var db = Open();
+        return Config(db, null, device);
+    }
+
+    private static Dictionary<string, Field> Config(SqliteConnection db, SqliteTransaction? tx, string device)
+    {
+        using var cmd = db.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = "SELECT field, value, changed FROM config WHERE device = $device";
+        cmd.Parameters.AddWithValue("$device", device);
+        using var row = cmd.ExecuteReader();
+        var fields = new Dictionary<string, Field>();
+        while (row.Read()) fields[row.GetString(0)] = new Field(row.GetString(1), row.GetInt64(2));
+        return fields;
+    }
+
+    private static void Put(SqliteConnection db, SqliteTransaction tx, string device,
+        Dictionary<string, Field> fields, string key, Field field)
+    {
+        using var cmd = db.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = "INSERT OR REPLACE INTO config VALUES ($device, $field, $value, $changed)";
+        cmd.Parameters.AddWithValue("$device", device);
+        cmd.Parameters.AddWithValue("$field", key);
+        cmd.Parameters.AddWithValue("$value", field.Value);
+        cmd.Parameters.AddWithValue("$changed", field.Changed);
+        cmd.ExecuteNonQuery();
+        fields[key] = field;
+    }
+
+    // At least one second after the stored change, so that it is newer.
+    private static long Later(long now, Field? stored) => stored is null ? now : Math.Max(now, stored.Changed + 1);
 
     /// <summary>Oldest first, from inclusive, to exclusive.</summary>
     public List<Reading> Readings(string device, long from, long to, int limit)

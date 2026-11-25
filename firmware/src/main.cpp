@@ -49,6 +49,7 @@ static void controlAndRefresh() {
   ui::HomeState st;
   st.sensorOk = r.ok;
   st.tempF = r.tempF;
+  st.hasHumidity = r.hasHumidity;
   st.humidity = r.humidity;
   st.setpointF = s_controller.setpoint();
   st.heating = heat;
@@ -61,6 +62,7 @@ static void controlAndRefresh() {
   // Display-only demo (see config.h): the relay above is unaffected.
   st.sensorOk = true;
   st.tempF = NO_SENSOR_DISPLAY_TEMP_F;
+  st.hasHumidity = true;
   st.humidity = 41;
   st.heating = (millis() / UI_DEMO_PERIOD_MS) % 2 == 0;
 #endif
@@ -135,7 +137,7 @@ void setup() {
   display::onWake(ui::homeShow);
   applySettings();
 
-  if (!sensor::begin()) Serial.println("BME688 not found");
+  if (!sensor::begin()) Serial.println("No BMP280 / BME280 / BME688 found at 0x76 or 0x77");
 
   controlAndRefresh();
   net::begin();

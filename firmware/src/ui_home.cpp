@@ -262,11 +262,15 @@ void homeUpdate(const HomeState& s) {
     lv_obj_set_hidden(s_faultBox, false);
   } else {
     lv_obj_set_hidden(s_faultBox, true);
-    snprintf(buf, sizeof(buf), "%d%% humidity", static_cast<int>(lroundf(s.humidity)));
+    buf[0] = '\0';
+    if (s.hasHumidity) {
+      snprintf(buf, sizeof(buf), "%d%% humidity", static_cast<int>(lroundf(s.humidity)));
+    }
     lv_label_set_text(s_humidity, buf);
     if (s.heating) {
       lv_obj_update_layout(s_humidity);
-      lv_obj_set_pos(s_heatPill, kPad + lv_obj_get_width(s_humidity) + 8, kBottomBaseline - 13);
+      const int offset = s.hasHumidity ? lv_obj_get_width(s_humidity) + 8 : 0;
+      lv_obj_set_pos(s_heatPill, kPad + offset, kBottomBaseline - 13);
       lv_obj_set_hidden(s_heatPill, false);
     } else {
       lv_obj_set_hidden(s_heatPill, true);

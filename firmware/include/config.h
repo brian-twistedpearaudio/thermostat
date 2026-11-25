@@ -7,7 +7,7 @@
 #define MIN_OFF_SECONDS 180
 #define WATCHDOG_SECONDS 8        // main loop hung this long: reset, which releases the relay
 
-#define SENSOR_PERIOD_MS 10000   // BME688 read interval
+#define SENSOR_PERIOD_MS 10000   // sensor read interval
 #define NO_SENSOR_DISPLAY_TEMP_F 69.4f  // shown as the inside temperature while no sensor is found
 // TEMPORARY, for checking the screen layout: shown until the clock is set. Display only; the
 // schedule never sees it. Use "--:--" to go back to showing that the time is unknown.

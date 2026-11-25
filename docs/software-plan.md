@@ -89,7 +89,7 @@ Behaviour: screen dims after a timeout and wakes on touch; the first touch on a 
 - Dashboard also edits the schedule, which the thermostat pulls.
 - Stores every 5-minute record indefinitely.
 - Web dashboard: current state, set point control, history chart with arbitrary date range, CSV export.
-- Holds each thermostat's configuration, which the thermostat pulls; the server never connects to a thermostat. Still to design: how a change made on the thermostat's screen gets back to the server, and how often it pulls.
+- Holds each thermostat's configuration, which the thermostat pulls; the server never connects to a thermostat. Still to design: how a change made on the thermostat's screen gets back to the server, and how often it pulls. Each pull is also the thermostat's check that the server is reachable (it replaces the empty upload used for that now).
 
 ## 6. REST API (draft)
 

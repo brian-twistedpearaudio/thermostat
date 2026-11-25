@@ -16,6 +16,9 @@ void add(const thermo::LogRecord& rec);  // returns at once; dropped if no serve
 // One line for the screen; empty if no server is set.
 void summary(char* buf, size_t n);
 
+// Short problem text for the Home status line; empty if none.
+const char* notice();
+
 // ---- History for the Graph screen ----
 
 enum class HistoryState : uint8_t { Ok, NoServer, NoWifi, NoClock, NoAnswer, BadToken, NoRecords, OldServer };

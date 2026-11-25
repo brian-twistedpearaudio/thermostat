@@ -20,7 +20,8 @@ struct HomeState {
 
 // onSetpointDelta is called with +1 or -1 when the user presses + or -.
 // onSettings is called when the top-left of the screen (gear) is tapped.
-void homeCreate(void (*onSetpointDelta)(int delta), void (*onSettings)());
+// onGraph is called when the big temperature is tapped.
+void homeCreate(void (*onSetpointDelta)(int delta), void (*onSettings)(), void (*onGraph)());
 void homeShow();
 void homeUpdate(const HomeState& s);
 void homeSetName(const char* name);  // top-left text; empty shows "Inside"

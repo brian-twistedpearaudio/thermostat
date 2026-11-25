@@ -28,6 +28,7 @@ Every call except `/health` needs the header `X-Api-Token`. Times are UTC Unix s
 | POST | `/api/v1/readings` | Records from a thermostat, up to 500. Safe to repeat; bad records are skipped and counted |
 | GET | `/api/v1/devices` | Known thermostats |
 | GET | `/api/v1/devices/{id}/readings?from=&to=&bucket=` | History, `to` exclusive, last 24 hours by default. `bucket` (seconds, 300 or more) combines records, with minimum and maximum temperature |
+| GET | `/api/v1/devices/{id}/graph?from=&to=&bucket=` | Temperature and set point as short text, up to 400 points, for the thermostat's Graph screen |
 
 A thermostat's ID is its Wi-Fi MAC address in hex. A history has at most 10,000 points; `truncated` is true if there were more.
 

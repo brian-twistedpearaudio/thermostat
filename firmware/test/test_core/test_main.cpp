@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "control.h"
+#include "graph_data.h"
 #include "log_cache.h"
 #include "log_interval.h"
 #include "schedule.h"
@@ -422,6 +423,42 @@ static void test_upload_json() {
       uploadJson("a1b2c3d4e5f6", "The \"Den\"", {r, none}).c_str());
 }
 
+static void test_graph_parse() {
+  const GraphSpan span = graphSpan(1700000400 + 299, 300);
+  TEST_ASSERT_EQUAL_UINT32(1700000400 + 300, span.end());
+  static GraphPoint p[kGraphPoints];
+  TEST_ASSERT_TRUE(parseGraph("graph 1\n1700000400,701,699,704,680\n1700000100,,,,-5\n1600000000,1,1,1,1\n", span, p));
+  TEST_ASSERT_EQUAL_INT(701, p[kGraphPoints - 1].avg);
+  TEST_ASSERT_EQUAL_INT(699, p[kGraphPoints - 1].min);
+  TEST_ASSERT_EQUAL_INT(704, p[kGraphPoints - 1].max);
+  TEST_ASSERT_EQUAL_INT(680, p[kGraphPoints - 1].set);
+  TEST_ASSERT_EQUAL_INT(kGraphNone, p[kGraphPoints - 2].avg);
+  TEST_ASSERT_EQUAL_INT(-5, p[kGraphPoints - 2].set);
+  TEST_ASSERT_EQUAL_INT(kGraphNone, p[0].set);
+  TEST_ASSERT_TRUE(parseGraph("graph 1\n", span, p));
+  for (const char* bad : {"", "<html>", "graph 1\n1700000400,701", "graph 1\n1700000400,701,699,704,680",
+                          "graph 1\n1700000400,x,1,1,1\n", "graph 1\n1700000400,9999,1,1,1\n",
+                          "graph 1\n1700000400,1,1,1,\n"}) {
+    TEST_ASSERT_FALSE(parseGraph(bad, span, p));
+  }
+}
+
+static void test_graph_scale() {
+  static GraphPoint p[kGraphPoints];
+  int lo = 0, hi = 0, step = 0;
+  for (GraphPoint& x : p) x = GraphPoint();
+  TEST_ASSERT_FALSE(graphScale(p, lo, hi, step));
+  p[3].set = 680;  // a set point alone is enough
+  TEST_ASSERT_TRUE(graphScale(p, lo, hi, step));
+  TEST_ASSERT_TRUE(lo <= 660 && hi >= 700);
+  TEST_ASSERT_EQUAL_INT(10, step);
+  p[4].min = 500;
+  p[5].max = 760;
+  TEST_ASSERT_TRUE(graphScale(p, lo, hi, step));
+  TEST_ASSERT_TRUE(lo < 500 && hi > 760);
+  TEST_ASSERT_EQUAL_INT(100, step);
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_no_heat_until_min_off_after_boot);
@@ -450,5 +487,7 @@ int main(int, char**) {
   RUN_TEST(test_cache_power_cuts);
   RUN_TEST(test_server_text);
   RUN_TEST(test_upload_json);
+  RUN_TEST(test_graph_parse);
+  RUN_TEST(test_graph_scale);
   return UNITY_END();
 }

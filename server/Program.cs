@@ -5,6 +5,7 @@ using Thermostat.Server;
 
 const int MaxBatch = 500;
 const int MaxPoints = 10_000;
+const int MaxGraphPoints = 400;
 const long MaxRange = 10L * 366 * 86400;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -92,7 +93,28 @@ api.MapGet("/devices/{id}/readings", (string id, long? from, long? to, long? buc
     return Results.Ok(new { truncated = rows.Count > MaxPoints, readings = rows.Take(MaxPoints) });
 });
 
+// The same history for the thermostat's own screen, as short text: "graph 1", then one line per
+// point, "time,avg,min,max,set" in tenths of a degree F; no temperature is left empty.
+api.MapGet("/devices/{id}/graph", (string id, long from, long to, long bucket) =>
+{
+    if (!store.HasDevice(id)) return Results.NotFound();
+    if (bucket is < 300 or > MaxRange) return Results.BadRequest(new { error = "bucket" });
+    if (from < 0 || from >= to || to > 10_000_000_000 || (to - from) / bucket > MaxGraphPoints)
+    {
+        return Results.BadRequest(new { error = "range" });
+    }
+    var text = new StringBuilder("graph 1\n");
+    foreach (var b in store.Buckets(id, from, to, bucket, MaxGraphPoints + 1))
+    {
+        text.Append(b.Time).Append(',').Append(Tenths(b.TempF)).Append(',').Append(Tenths(b.TempMinF)).Append(',')
+            .Append(Tenths(b.TempMaxF)).Append(',').Append(Tenths(b.SetpointF)).Append('\n');
+    }
+    return Results.Text(text.ToString());
+});
+
 app.Run();
+
+static int? Tenths(double? v) => v is { } x ? (int)Math.Round(x * 10) : null;
 
 static bool IsValid(Reading? r, long now) =>
     r is not null

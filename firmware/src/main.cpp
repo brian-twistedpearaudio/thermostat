@@ -1,5 +1,5 @@
 // Thermostat firmware — sensor, control, relay, screens, Wi-Fi, network time and 5-minute records.
-// Not yet included: graph/info screens, REST API.
+// Not yet included: info screen, pulling configuration from the server.
 #include <Arduino.h>
 #include <Wire.h>
 #include <esp_task_wdt.h>
@@ -16,6 +16,7 @@
 #include "schedule.h"
 #include "sensor.h"
 #include "settings_store.h"
+#include "ui_graph.h"
 #include "ui_home.h"
 #include "ui_idle.h"
 #include "ui_settings.h"
@@ -149,7 +150,8 @@ void setup() {
   s_setpoints = thermo::SetpointManager(static_cast<float>(s_settings.setpointF));
 
   display::begin();
-  ui::homeCreate(onSetpointDelta, ui::settingsShow);
+  ui::homeCreate(onSetpointDelta, ui::settingsShow, ui::graphShow);
+  ui::graphCreate(ui::homeShow);
   ui::settingsCreate(onSettingStep, ui::homeShow, ui::wifiShow);
   ui::wifiCreate(ui::settingsShow);
   ui::idleCreate();
@@ -175,6 +177,7 @@ void loop() {
   display::loop();
   sensor::poll();
   settings_store::poll();
+  ui::graphPoll();
 
   const uint32_t now = millis();
   if (now - s_lastControlMs >= 1000) {

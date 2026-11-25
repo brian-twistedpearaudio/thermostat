@@ -15,13 +15,14 @@ Status: draft 2, 2026-11-14. Nothing here is built yet. Items marked **(proposed
 | BME688 gas sensor | Not used for now; temperature, humidity, pressure only. Driver kept so gas can be added later |
 | Schedules | One schedule of time-of-day set points, the same every day, stored and run on the thermostat; defaults to be supplied |
 | Logging | (2026-11-25) The thermostat sends each 5-minute record to the server and keeps no history of its own. While the server is not responding, records are cached on the thermostat and uploaded when it is available again. The server runs on the development Windows PC for now. History is requested from the server per device. Replaces the on-device ring buffer and `/history` below, and answers questions 6 and 10: the API and database have a device ID from the start |
+| No server on the thermostat | (2026-11-25) Thermostats run no HTTP server and always pull their configuration (set point, mode, settings, schedule) from the server. They make every connection; nothing connects to them. Replaces the thermostat REST API, `api` module, mDNS name and control forwarding below, and answers question 9 (no page on the thermostat). The thermostat keeps heating on the last configuration it pulled when the server is down. One exception: the temporary hotspot page, for setup only (Wi-Fi, server address and token). It runs only while the hotspot is open and is never reachable on the home network |
 | Manual changes | Last until the next schedule event, then the schedule resumes. No Hold |
 
 ## 1. Scope
 
 Three pieces of software:
 
-1. **Thermostat firmware** (PlatformIO / VS Code, ESP32-S3) — touch UI, sensor, boiler control, 5-minute logging, REST API.
+1. **Thermostat firmware** (PlatformIO / VS Code, ESP32-S3) — touch UI, sensor, boiler control, 5-minute logging, pulling its configuration from the server.
 2. **Local server** — receives and stores the log long-term, exposes a REST API to read history and control the thermostat, serves a web dashboard.
 3. **Shared API contract** — one written spec both sides are built against.
 
@@ -85,12 +86,14 @@ Behaviour: screen dims after a timeout and wakes on touch; the first touch on a 
 ## 5. Local server
 
 - C# on ASP.NET Core (current LTS release of .NET), SQLite through EF Core or Microsoft.Data.Sqlite. One codebase for Windows and Linux; installable as a Windows service or a systemd service.
-- Dashboard also edits the schedule, which is then written to the thermostat.
+- Dashboard also edits the schedule, which the thermostat pulls.
 - Stores every 5-minute record indefinitely.
 - Web dashboard: current state, set point control, history chart with arbitrary date range, CSV export.
-- Control requests are forwarded to the thermostat's REST API; the thermostat stays the single source of truth.
+- Holds each thermostat's configuration, which the thermostat pulls; the server never connects to a thermostat. Still to design: how a change made on the thermostat's screen gets back to the server, and how often it pulls.
 
 ## 6. REST API (draft)
+
+**Superseded:** the thermostat has no API (see Decisions). The table below and the forwarded control calls are kept only as a list of what the configuration and status must cover; `server/README.md` has the API as built.
 
 Thermostat (`http://thermostat.local/api/v1`):
 
@@ -132,8 +135,8 @@ Thermostat Project/
 2. Control logic with PC-side unit tests (swing, min times, fail-safe).
 3. Home + Settings screens in the chosen style.
 4. Logging to flash and the Graph screen.
-5. Wi-Fi, time, thermostat REST API.
-6. Server: ingest, storage, control pass-through, dashboard.
+5. Wi-Fi, time, pulling configuration from the server.
+6. Server: ingest, storage, configuration, dashboard.
 7. Uplink with backfill, OTA, fault handling, soak test on the real boiler.
 
 ## 9. Open questions

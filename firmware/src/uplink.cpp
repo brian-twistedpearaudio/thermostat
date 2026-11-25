@@ -5,6 +5,7 @@
 #include <WiFiClient.h>
 #include <esp_mac.h>
 #include <esp_partition.h>
+#include <time.h>
 
 #include <atomic>
 #include <string>
@@ -92,6 +93,101 @@ static void keep(const thermo::LogRecord& rec) {
   if (!s_cache.append(rec)) Serial.println("Record cache write FAILED");
 }
 
+// ---- History ----
+
+// A request is a bucket length and a number that grows, so an answer can be matched to it.
+static portMUX_TYPE s_wantMux = portMUX_INITIALIZER_UNLOCKED;
+static uint32_t s_wantBucket = 0;
+static uint32_t s_wantNumber = 0;
+static SemaphoreHandle_t s_answerLock = nullptr;
+static History s_answer;             // guarded by s_answerLock
+static uint32_t s_answerNumber = 0;  // guarded by s_answerLock
+static std::atomic<bool> s_answerReady{false};
+
+static uint32_t wanted(uint32_t& bucket) {
+  portENTER_CRITICAL(&s_wantMux);
+  bucket = s_wantBucket;
+  const uint32_t number = s_wantNumber;
+  portEXIT_CRITICAL(&s_wantMux);
+  return number;
+}
+
+static HistoryState fetch(const net::Server& server, uint32_t bucket, History& out) {
+  const std::string address = server.address;
+  const size_t colon = address.find(':');
+  if (colon == std::string::npos) return HistoryState::NoServer;
+  if (net::status().state != net::State::Connected) return HistoryState::NoWifi;
+  const time_t now = time(nullptr);
+  if (now < 1700000000) return HistoryState::NoClock;
+  out.span = thermo::graphSpan(static_cast<uint32_t>(now), bucket);
+
+  char path[112];
+  snprintf(path, sizeof(path), "/api/v1/devices/%s/graph?from=%lu&to=%lu&bucket=%lu", s_device.c_str(),
+           static_cast<unsigned long>(out.span.start), static_cast<unsigned long>(out.span.end()),
+           static_cast<unsigned long>(bucket));
+  WiFiClient client;
+  HTTPClient http;
+  http.setReuse(false);
+  http.setConnectTimeout(3000);
+  http.setTimeout(5000);
+  if (!http.begin(client, address.substr(0, colon).c_str(),
+                  static_cast<uint16_t>(atoi(address.c_str() + colon + 1)), path)) {
+    return HistoryState::NoAnswer;
+  }
+  http.addHeader("X-Api-Token", server.token);
+  const int code = http.GET();
+  HistoryState state = HistoryState::NoAnswer;
+  if (code == 401) state = HistoryState::BadToken;
+  if (code == 404) state = HistoryState::NoRecords;
+  if (code == 200) {
+    const int size = http.getSize();  // -1 if not given; a full reply is about 9 KB
+    if (size > 0 && size <= 20000) {
+      const String text = http.getString();
+      if (static_cast<int>(text.length()) == size) {
+        state = thermo::parseGraph(text.c_str(), out.span, out.points) ? HistoryState::Ok : HistoryState::OldServer;
+      }
+    } else {
+      state = HistoryState::OldServer;
+    }
+  }
+  http.end();
+  return state;
+}
+
+static void answerHistory(const net::Server& server) {
+  static uint32_t done = 0;
+  static History work;  // too large for the stack
+  uint32_t bucket;
+  const uint32_t number = wanted(bucket);
+  if (number == done) return;
+  done = number;
+  work.state = fetch(server, bucket, work);
+  xSemaphoreTake(s_answerLock, portMAX_DELAY);
+  s_answer = work;
+  s_answerNumber = number;
+  s_answerReady = true;
+  xSemaphoreGive(s_answerLock);
+}
+
+void requestHistory(uint32_t bucket) {
+  portENTER_CRITICAL(&s_wantMux);
+  s_wantBucket = bucket;
+  ++s_wantNumber;
+  portEXIT_CRITICAL(&s_wantMux);
+}
+
+bool takeHistory(History& out) {
+  if (!s_answerReady || !s_answerLock) return false;
+  uint32_t bucket;
+  const uint32_t number = wanted(bucket);
+  xSemaphoreTake(s_answerLock, portMAX_DELAY);  // only ever held for a short copy
+  s_answerReady = false;
+  const bool mine = s_answerNumber == number;
+  if (mine) out = s_answer;
+  xSemaphoreGive(s_answerLock);
+  return mine;
+}
+
 static void task(void*) {
   uint8_t mac[6];
   esp_read_mac(mac, ESP_MAC_WIFI_STA);
@@ -113,9 +209,10 @@ static void task(void*) {
 
   for (;;) {
     thermo::LogRecord rec;
-    const bool got = xQueueReceive(s_queue, &rec, pdMS_TO_TICKS(1000)) == pdTRUE;
+    const bool got = xQueueReceive(s_queue, &rec, pdMS_TO_TICKS(200)) == pdTRUE;
 
     const net::Server server = net::server();
+    answerHistory(server);
     if (server.address[0] == '\0') {
       s_link = Link::Off;
       last = server;
@@ -154,7 +251,8 @@ static void task(void*) {
 
 void begin() {
   s_queue = xQueueCreate(kQueueLength, sizeof(thermo::LogRecord));
-  if (!s_queue || xTaskCreatePinnedToCore(task, "uplink", 10240, nullptr, 1, nullptr, 0) != pdPASS) {
+  s_answerLock = xSemaphoreCreateMutex();
+  if (!s_queue || !s_answerLock || xTaskCreatePinnedToCore(task, "uplink", 10240, nullptr, 1, nullptr, 0) != pdPASS) {
     Serial.println("Uplink task FAILED to start");
   }
 }

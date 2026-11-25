@@ -22,5 +22,6 @@ struct HomeState {
 void homeCreate(void (*onSetpointDelta)(int delta), void (*onSettings)());
 void homeShow();
 void homeUpdate(const HomeState& s);
+void homeSetName(const char* name);  // top-left text; empty shows "Inside"
 
 }  // namespace ui

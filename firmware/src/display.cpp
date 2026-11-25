@@ -100,6 +100,9 @@ void setBrightness(int pct) {
 }
 
 void setDimTimeout(int seconds) { s_dimAfterMs = static_cast<uint32_t>(seconds) * 1000; }
+void keepAwake(bool on) {
+  if (on && !s_dimmed) s_lastTouchMs = millis();
+}
 void onDim(void (*cb)()) { s_onDim = cb; }
 void onWake(void (*cb)()) { s_onWake = cb; }
 

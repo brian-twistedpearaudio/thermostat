@@ -69,6 +69,7 @@ function report(e) {
 function forget() {
   loadNumber++;  // an answer still on its way is not shown
   token = '';
+  closeControls();
   stored('localStorage', 'token', null);
   stored('sessionStorage', 'token', null);
 }
@@ -106,7 +107,7 @@ async function loadDevices(number) {
 }
 
 function drawDevices() {
-  const focused = document.activeElement?.dataset?.device;
+  const { device: focused, controls: focusedButton } = document.activeElement?.dataset ?? {};
   $('devices').replaceChildren(...devices.map(d => {
     const label = make('label', 'device');
     const box = make('input');
@@ -123,9 +124,14 @@ function drawDevices() {
     const key = make('span', 'key');
     if (box.checked) key.style.background = color(d.id);
     label.append(box, key, make('span', '', nameOf(d)), make('small', '', age(d.lastReading)));
-    return label;
+    const row = make('div', 'thermostat');
+    row.append(label, deviceState(d));
+    return row;
   }));
   if (focused) $('devices').querySelector(`[data-device="${focused}"]`)?.focus();
+  if (focusedButton) $('devices').querySelector(`[data-controls="${focusedButton}"]`)?.focus();
+  for (const d of devices) if (!links.has(d.id)) poll(d.id);
+  drawControls();
 }
 
 // Null if the custom dates are not usable.
@@ -423,4 +429,5 @@ setInterval(() => {
   if (token && !document.hidden && $('tip').hidden && $('range').value !== 'custom') load();
 }, 60000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden && token && $('tip').hidden) load(); });
+startControls();
 load();

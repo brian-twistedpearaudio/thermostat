@@ -143,6 +143,26 @@ static bool saveName(const std::string& name) {
   return ok;
 }
 
+static char s_wantedName[sizeof(Status::name)] = "";  // guarded by s_mux
+static bool s_nameWanted = false;                     // guarded by s_mux
+
+void requestName(const char* name) {
+  portENTER_CRITICAL(&s_mux);
+  strlcpy(s_wantedName, name, sizeof(s_wantedName));
+  s_nameWanted = true;
+  portEXIT_CRITICAL(&s_mux);
+}
+
+static void takeName() {
+  char name[sizeof(s_wantedName)];
+  portENTER_CRITICAL(&s_mux);
+  const bool wanted = s_nameWanted;
+  s_nameWanted = false;
+  memcpy(name, s_wantedName, sizeof(name));
+  portEXIT_CRITICAL(&s_mux);
+  if (wanted && !saveName(name)) Serial.println("Name save FAILED");
+}
+
 // ---- Server ----
 
 static_assert(thermo::kMaxServer < sizeof(Server::address) && thermo::kMaxToken < sizeof(Server::token), "");
@@ -385,6 +405,7 @@ static void openPortal() {
 // ---- Task ----
 
 static void step() {
+  takeName();
   const Request req = s_request.exchange(Request::None);
   const State st = state();
 

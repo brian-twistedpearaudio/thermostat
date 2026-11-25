@@ -19,12 +19,12 @@ namespace uplink {
 
 static const uint32_t kSectors = 256;     // 1 MB: 65,280 records, about 226 days
 static const uint32_t kRetryMs = 15000;   // pause after a failed attempt
-static const uint32_t kCheckMs = 30000;   // with nothing to send, the server is checked this often
+static const uint32_t kSyncMs = 10000;
 static const uint32_t kWifiNoticeMs = 40000;
 static const size_t kBatch = 24;
 static const int kQueueLength = 8;
 
-enum class Link : uint8_t { Off, Waiting, Ok, NoAnswer, BadToken };
+enum class Link : uint8_t { Off, Waiting, Ok, NoAnswer, BadToken, OldServer };  // set by the sync
 static std::atomic<Link> s_link{Link::Off};
 static std::atomic<uint32_t> s_pending{0};
 static QueueHandle_t s_queue = nullptr;
@@ -53,15 +53,13 @@ static void setLink(Link link) {
   if (link == Link::Ok) Serial.println("Server connected");
   if (link == Link::NoAnswer) Serial.println("Server not answering");
   if (link == Link::BadToken) Serial.println("Server rejected the token");
+  if (link == Link::OldServer) Serial.println("Server needs updating");
 }
 
-// True once the server has the records. With none it only checks the connection.
+// True once the server has the records.
 static bool send(const net::Server& server, const std::vector<thermo::LogRecord>& records) {
   const net::Status w = net::status();
-  if (w.state != net::State::Connected) {
-    setLink(Link::Waiting);
-    return false;
-  }
+  if (w.state != net::State::Connected) return false;
 
   const std::string address = server.address;
   const size_t colon = address.find(':');
@@ -85,10 +83,79 @@ static bool send(const net::Server& server, const std::vector<thermo::LogRecord>
     http.end();
   }
 
-  if (code == 401) setLink(Link::BadToken);
-  else setLink(understood ? Link::Ok : Link::NoAnswer);
   if (code > 0 && code != 401 && !understood) Serial.printf("Server answered %d\n", code);
   return understood;
+}
+
+// ---- Configuration sync ----
+
+static SemaphoreHandle_t s_syncLock = nullptr;
+static SyncRequest s_offer;    // guarded by s_syncLock
+static bool s_offered = false;  // guarded by s_syncLock
+static SyncReply s_reply;      // guarded by s_syncLock
+static std::atomic<bool> s_replyReady{false};
+static std::atomic<bool> s_syncSoon{false};
+
+void offerSync(const SyncRequest& r, bool soon) {
+  if (!s_syncLock) return;
+  xSemaphoreTake(s_syncLock, portMAX_DELAY);  // only ever held for a short copy
+  s_offer = r;
+  s_offered = true;
+  xSemaphoreGive(s_syncLock);
+  if (soon) s_syncSoon = true;
+}
+
+bool takeSync(SyncReply& out) {
+  if (!s_replyReady) return false;
+  xSemaphoreTake(s_syncLock, portMAX_DELAY);
+  s_replyReady = false;
+  out = s_reply;
+  xSemaphoreGive(s_syncLock);
+  return true;
+}
+
+// Also the check that the server is there. False if there was nothing to send yet.
+static bool sync(const net::Server& server) {
+  SyncRequest r;
+  xSemaphoreTake(s_syncLock, portMAX_DELAY);
+  const bool offered = s_offered;
+  if (offered) r = s_offer;
+  xSemaphoreGive(s_syncLock);
+  const std::string address = server.address;
+  const size_t colon = address.find(':');
+  if (!offered || colon == std::string::npos) return false;
+
+  WiFiClient client;
+  HTTPClient http;
+  http.setReuse(false);
+  http.setConnectTimeout(3000);
+  http.setTimeout(5000);
+  Link link = Link::NoAnswer;
+  int code = -1;
+  const std::string path = "/api/v1/devices/" + s_device + "/sync";
+  if (http.begin(client, address.substr(0, colon).c_str(),
+                 static_cast<uint16_t>(atoi(address.c_str() + colon + 1)), path.c_str())) {
+    http.addHeader("Content-Type", "text/plain");
+    http.addHeader("X-Api-Token", server.token);
+    code = http.POST(reinterpret_cast<uint8_t*>(const_cast<char*>(r.text.data())), r.text.size());
+    if (code == 401) link = Link::BadToken;
+    if (code == 404 || code == 405) link = Link::OldServer;
+    if (code == 200 && http.getSize() > 0 && http.getSize() <= 1024) {
+      SyncReply reply;
+      if (thermo::parseSyncReply(http.getString().c_str(), reply.fields)) {
+        link = Link::Ok;
+        memcpy(reply.changes, r.changes, sizeof(reply.changes));
+        xSemaphoreTake(s_syncLock, portMAX_DELAY);
+        s_reply = reply;
+        s_replyReady = true;
+        xSemaphoreGive(s_syncLock);
+      }
+    }
+    http.end();
+  }
+  if (link == Link::NoAnswer && code > 0) Serial.printf("Server answered %d to the sync\n", code);
+  setLink(link);
+  return true;
 }
 
 static void keep(const thermo::LogRecord& rec) {
@@ -206,8 +273,8 @@ static void task(void*) {
   if (s_pending > 0) Serial.printf("%lu records waiting for the server\n", static_cast<unsigned long>(s_pending));
 
   net::Server last = {};
-  uint32_t triedMs = 0;
-  bool failed = false;
+  uint32_t triedMs = 0, syncMs = 0;
+  bool failed = false, synced = false;
 
   for (;;) {
     thermo::LogRecord rec;
@@ -222,13 +289,25 @@ static void task(void*) {
     }
     if (strcmp(server.address, last.address) != 0 || strcmp(server.token, last.token) != 0) {
       last = server;  // just set, or changed: try at once
-      failed = false;
+      failed = synced = false;
       setLink(Link::Waiting);
     }
 
+    const bool up = net::status().state == net::State::Connected;
+    if (!up) {
+      setLink(Link::Waiting);
+      synced = false;  // at once when Wi-Fi is back
+    } else if (s_syncSoon.exchange(false) || !synced || millis() - syncMs >= kSyncMs) {
+      if (sync(server)) {
+        synced = true;
+        syncMs = millis();
+      }
+    }
+    const bool reachable = up && (s_link == Link::Ok || s_link == Link::OldServer);
+
     if (got) {
-      // Straight to the server if nothing older is waiting; otherwise behind it.
-      if (s_cache.pending() > 0) {
+      // Straight to the server if it is there and nothing older is waiting; otherwise behind it.
+      if (!reachable || s_cache.pending() > 0) {
         keep(rec);
       } else {
         failed = !send(server, {rec});
@@ -237,14 +316,11 @@ static void task(void*) {
       }
     }
 
-    // With nothing waiting this sends an empty batch, which shows whether the server is there.
-    // Until the configuration pull exists: that will be the check instead.
-    const bool work = s_cache.pending() > 0 || s_link != Link::Ok || millis() - triedMs >= kCheckMs;
-    if (work && net::status().state == net::State::Connected && (!failed || millis() - triedMs >= kRetryMs)) {
+    if (reachable && s_cache.pending() > 0 && (!failed || millis() - triedMs >= kRetryMs)) {
       const std::vector<thermo::LogRecord> batch = s_cache.peek(kBatch);
       failed = !send(server, batch);
       triedMs = millis();
-      if (!failed && !batch.empty()) {
+      if (!failed) {
         if (!s_cache.markSent()) Serial.println("Record cache write FAILED");
         Serial.printf("Sent %u waiting records\n", static_cast<unsigned>(batch.size()));
       }
@@ -256,7 +332,8 @@ static void task(void*) {
 void begin() {
   s_queue = xQueueCreate(kQueueLength, sizeof(thermo::LogRecord));
   s_answerLock = xSemaphoreCreateMutex();
-  if (!s_queue || !s_answerLock || xTaskCreatePinnedToCore(task, "uplink", 10240, nullptr, 1, nullptr, 0) != pdPASS) {
+  s_syncLock = xSemaphoreCreateMutex();
+  if (!s_queue || !s_answerLock || !s_syncLock || xTaskCreatePinnedToCore(task, "uplink", 10240, nullptr, 1, nullptr, 0) != pdPASS) {
     Serial.println("Uplink task FAILED to start");
   }
 }
@@ -275,6 +352,7 @@ const char* notice() {
   switch (s_link.load()) {
     case Link::NoAnswer: return "Server not reachable";
     case Link::BadToken: return "Server rejected the token";
+    case Link::OldServer: return "Server needs updating";
     default: return "";
   }
 }
@@ -288,6 +366,7 @@ void summary(char* buf, size_t n) {
     case Link::Ok: text = "Server connected"; break;
     case Link::NoAnswer: text = "Server not answering"; break;
     case Link::BadToken: text = "Server rejected the token"; break;
+    case Link::OldServer: text = "Server needs updating"; break;
   }
   if (text[0] != '\0' && waiting > 0) snprintf(buf, n, "%s, %lu waiting", text, waiting);
   else snprintf(buf, n, "%s", text);

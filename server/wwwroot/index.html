@@ -45,6 +45,49 @@
 </main>
 <p id="message" role="status"></p>
 <div id="tip" hidden></div>
+
+<dialog id="controls" aria-labelledby="c-title">
+  <header><h2 id="c-title"></h2><button id="c-close" type="button">Close</button></header>
+  <p id="c-now"></p>
+  <p id="c-error" class="problem" role="alert"></p>
+  <div id="c-body">
+    <div class="setpoint" role="group" aria-label="Set point">
+      <button id="c-down" type="button" aria-label="Lower the set point">&minus;</button>
+      <div><output id="c-set"></output> &deg;F</div>
+      <button id="c-up" type="button" aria-label="Raise the set point">+</button>
+    </div>
+    <p id="c-lasts" hidden></p>
+    <small id="c-set-status" role="status"></small>
+    <div class="field" role="radiogroup" aria-label="Mode">
+      <span>Mode</span>
+      <span class="modes">
+        <label class="check"><input type="radio" name="c-mode" value="heat"> Heat</label>
+        <label class="check"><input type="radio" name="c-mode" value="off"> Off</label>
+      </span>
+      <small id="c-mode-status" role="status"></small>
+    </div>
+    <form id="c-form" novalidate>
+      <div class="field"><label for="c-swing">Swing</label>
+        <select id="c-swing"></select>
+        <small id="c-swing-status" role="status"></small></div>
+      <div class="field"><label for="c-offset">Sensor offset, &deg;F</label>
+        <input id="c-offset" type="number" min="-10" max="10" step="0.1">
+        <small id="c-offset-status" role="status"></small></div>
+      <div class="field"><label for="c-name">Name</label>
+        <input id="c-name" maxlength="16" autocomplete="off">
+        <small id="c-name-status" role="status"></small></div>
+      <fieldset><legend>Schedule</legend>
+        <p id="c-none">No events.</p>
+        <div id="c-schedule"></div>
+        <button id="c-add" type="button">Add event</button>
+        <small id="c-schedule-status" role="status"></small>
+      </fieldset>
+      <button type="submit">Save</button>
+      <p id="c-problem" class="problem" role="alert"></p>
+    </form>
+  </div>
+</dialog>
+<script src="controls.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

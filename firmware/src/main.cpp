@@ -1,5 +1,5 @@
 // Thermostat firmware — sensor, control, relay, screens, Wi-Fi, network time and 5-minute records.
-// Not yet included: info screen, pulling configuration from the server.
+// Not yet included: info screen.
 #include <Arduino.h>
 #include <Wire.h>
 #include <esp_task_wdt.h>
@@ -7,6 +7,7 @@
 #include <time.h>
 
 #include "config.h"
+#include "config_sync.h"
 #include "control.h"
 #include "datalog.h"
 #include "display.h"
@@ -24,7 +25,7 @@
 #include "uplink.h"
 
 static thermo::Controller s_controller;
-static thermo::Schedule s_schedule;  // empty until defaults are supplied
+static thermo::Schedule s_schedule;  // from the server; empty until one is made there
 static thermo::SetpointManager s_setpoints;
 static thermo::Settings s_settings;
 
@@ -121,6 +122,27 @@ static void onSettingStep(thermo::SettingId id, int dir) {
   controlAndRefresh();  // Mode Off must release the relay at once
 }
 
+// Takes changes made on the server.
+static void pullConfig() {
+  bool setpoint;
+  if (!config_sync::poll(s_settings, s_schedule, clockSet(), setpoint)) return;
+  if (setpoint) s_setpoints.manualSet(static_cast<float>(s_settings.setpointF));
+  settings_store::changed(s_settings);
+  applySettings();
+  controlAndRefresh();
+}
+
+static void syncTick() {
+  const sensor::Reading& r = sensor::latest();
+  thermo::SyncState s;
+  s.sensorOk = r.ok;
+  s.tempF = r.tempF;
+  s.setpointF = s_controller.setpoint();
+  s.heating = s_controller.heating();
+  s.manual = s_setpoints.overridden() && s_schedule.count() > 0;
+  config_sync::tick(s_settings, s, clockSet());
+}
+
 static void refreshWifi() {
   const net::Status w = net::status();
   ui::homeSetName(w.name);
@@ -165,6 +187,7 @@ void setup() {
   controlAndRefresh();
   net::begin();
   uplink::begin();
+  config_sync::begin(s_settings, s_schedule);
   refreshWifi();
 
   // If loop() stops running, reset the chip; relay::begin() then starts with heat off.
@@ -179,12 +202,14 @@ void loop() {
   sensor::poll();
   settings_store::poll();
   ui::graphPoll();
+  pullConfig();
 
   const uint32_t now = millis();
   if (now - s_lastControlMs >= 1000) {
     s_lastControlMs = now;
     controlAndRefresh();
     logTick();
+    syncTick();
     refreshWifi();
   }
   delay(5);

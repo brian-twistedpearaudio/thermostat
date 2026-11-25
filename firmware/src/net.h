@@ -35,6 +35,7 @@ Server server();  // a copy; safe from any task
 void begin();
 void startSetup();   // open the hotspot
 void stopSetup();    // close it and go back to the saved network
+void requestName(const char* name);  // saved soon by the network task; must be a valid name
 Status status();     // a copy; safe from any task
 
 }  // namespace net

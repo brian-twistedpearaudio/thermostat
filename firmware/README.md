@@ -17,7 +17,9 @@ PlatformIO project for the LilyGO T-Display-S3 Touch. Open this `firmware` folde
 - Optional thermostat name (up to 16 characters), set on the same page; it replaces "Inside" on Home. To change only the name, leave the network on "Keep"
 - Clock from network time (US Eastern, with daylight saving)
 
-Not yet included: 5-minute logging, Graph / Info screens, REST API, server uplink, OTA.
+- 5-minute records (average temperature, humidity and pressure, set point, share of time heating), sent to the server in `../server`, which keeps the history. While it is not answering they are kept in flash (1 MB, about 226 days) and sent, oldest first, when it is back. The server address and token are set on the Wi-Fi setup page; the Wi-Fi screen shows the state
+
+Not yet included: Graph / Info screens, REST API, OTA.
 
 ## Commands
 
@@ -29,12 +31,14 @@ Not yet included: 5-minute logging, Graph / Info screens, REST API, server uplin
 
 ## Status of checks
 
-- `lib/thermo_core` (control and schedule logic): 13 control and schedule tests passed earlier. 3 settings and 3 Wi-Fi and name text tests added since; they compile, but have **not been run** (no PC compiler yet).
+- `lib/thermo_core` (control and schedule logic): 13 control and schedule tests passed earlier. 3 settings and 3 Wi-Fi and name text tests and 7 record, cache and upload tests added since; they compile, but have **not been run** (no PC compiler yet).
 - Firmware builds and boots on the bare T-Display-S3 board (no sensor or relay) with no resets in 25 s. Set point +, the settings screen (scrolling and buttons), saving settings, Off mode display, the look of the dimmed screen and wake-up touch were checked by hand.
 - Wi-Fi setup through the hotspot was checked on the board: a failed first attempt was reported and setup could be repeated, the second attempt connected, and the log showed network time setting the clock. The `request handler not found` log lines during setup are harmless (requests for pages that do not exist, answered by a redirect to the setup page).
 - Setting a thermostat name, and reconnecting to Wi-Fi after a reset without setup, were also checked on the board.
 - A BMP280 was detected at 0x76 and shows temperatures; no I2C errors in 25 s.
-- **Not yet confirmed on hardware:** recovering from a router outage, keeping the saved network when a new one fails, a watchdog reset, sensor accuracy and fault handling (unplugged, power blip), the BME280 and BME688, heating (including Off mode stopping a heat call) and the relay.
+- The relay followed heat calls, minimum times (shortened to 5 s for the test) and what appears to be Mode Off; with the full times, heat came on 180 s after startup. No boiler was connected.
+- Records reached the server. With the server stopped, 2 records were kept and then sent after it restarted, with none missing. Some serial lines came out cut short during this.
+- **Not yet confirmed on hardware:** cached records surviving a thermostat restart, recovering from a router outage, keeping the saved network when a new one fails, a watchdog reset, sensor accuracy and fault handling (unplugged, power blip), the BME280 and BME688, the relay staying off during a reset and with no sensor.
 
 ## Check on first power-up
 
@@ -52,7 +56,7 @@ Not yet included: 5-minute logging, Graph / Info screens, REST API, server uplin
 - With no sensor the screen shows a fixed 69.4° placeholder and the fault box, and heat stays off.
 - A sensor fault turns heat off immediately and shows on the screen.
 - Wi-Fi is 2.4 GHz only. The setup hotspot uses a new password each time, shown only on the screen, and closes on Back, after 10 minutes, or once a network is entered. A new network replaces the saved one only after it connects.
-- The Wi-Fi password is stored unencrypted in the board's flash.
+- The Wi-Fi password and server token are stored unencrypted in the board's flash, and records are sent over plain HTTP.
 - Heating control does not depend on Wi-Fi; the network runs in its own task.
 - The clock shows a fixed 12:00 PM placeholder until network time is received (`NO_TIME_DISPLAY_TEXT` in `include/config.h`; set it to `--:--` before real use).
 

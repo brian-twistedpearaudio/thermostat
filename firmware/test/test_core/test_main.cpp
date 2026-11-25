@@ -1,9 +1,16 @@
 // Unit tests for the control and schedule logic. Run with: pio test -e native
+#include <string.h>
 #include <unity.h>
 
+#include <string>
+#include <vector>
+
 #include "control.h"
+#include "log_cache.h"
+#include "log_interval.h"
 #include "schedule.h"
 #include "settings.h"
+#include "upload_text.h"
 #include "wifi_text.h"
 
 using namespace thermo;
@@ -244,6 +251,177 @@ static void test_html_escape() {
   TEST_ASSERT_EQUAL_STRING("&lt;b&gt;&quot;A&amp;B&#39;s&quot;", htmlEscape("<b>\"A&B's\"").c_str());
 }
 
+// ---------- 5-minute records ----------
+
+static void test_log_interval_averages() {
+  LogInterval iv;
+  LogRecord rec;
+  LogSample s;
+  s.ok = true;
+  s.setpointF = 70;
+  const uint32_t t0 = 1700000100;  // a multiple of 300
+  for (uint32_t i = 0; i < 300; ++i) {
+    s.tempF = i < 150 ? 68.0f : 70.0f;
+    s.heating = i < 75;
+    TEST_ASSERT_FALSE(iv.add(t0 + i, 1000, s, rec));
+  }
+  s.modeOff = true;  // belongs to the next interval
+  TEST_ASSERT_TRUE(iv.add(t0 + 300, 1000, s, rec));
+  TEST_ASSERT_EQUAL_UINT32(t0, rec.time);
+  TEST_ASSERT_TRUE(rec.hasTemp);
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, 69.0f, rec.tempF);
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, 70.0f, rec.setpointF);
+  TEST_ASSERT_EQUAL_INT(25, rec.heatPct);
+  TEST_ASSERT_FALSE(rec.hasHumidity);
+  TEST_ASSERT_FALSE(rec.sensorFault);
+  TEST_ASSERT_FALSE(rec.modeOff);
+  TEST_ASSERT_FALSE(rec.partial);
+}
+
+static void test_log_interval_fault_and_partial() {
+  LogInterval iv;
+  LogRecord rec;
+  LogSample s;  // sensor not ok
+  for (uint32_t i = 200; i < 300; ++i) TEST_ASSERT_FALSE(iv.add(1700000100 + i, 1000, s, rec));
+  TEST_ASSERT_TRUE(iv.add(1700000400, 1000, s, rec));
+  TEST_ASSERT_FALSE(rec.hasTemp);
+  TEST_ASSERT_TRUE(rec.sensorFault);
+  TEST_ASSERT_TRUE(rec.partial);
+}
+
+// ---------- Upload cache ----------
+
+class RamFlash : public LogFlash {
+ public:
+  explicit RamFlash(uint32_t sectors) : mem(sectors * LogCache::kSector, 0x5A) {}  // starts as junk
+  bool read(uint32_t addr, void* buf, size_t n) override {
+    memcpy(buf, &mem[addr], n);
+    return true;
+  }
+  bool write(uint32_t addr, const void* buf, size_t n) override {
+    const uint8_t* p = static_cast<const uint8_t*>(buf);
+    for (size_t i = 0; i < n; ++i) mem[addr + i] &= p[i];  // like flash: can only clear bits
+    return true;
+  }
+  bool erase(uint32_t addr) override {
+    memset(&mem[addr], 0xFF, LogCache::kSector);
+    return true;
+  }
+  std::vector<uint8_t> mem;
+};
+
+static LogRecord recordAt(uint32_t n) {
+  LogRecord r;
+  r.time = 1700000100u + n * kLogIntervalS;
+  r.hasTemp = true;
+  r.tempF = 70.25f;
+  r.pressureHpa = 1001.2f;
+  r.setpointF = 68;
+  r.heatPct = 40;
+  r.partial = true;
+  return r;
+}
+
+static void test_cache_keeps_and_sends_in_order() {
+  RamFlash f(3);
+  LogCache c;
+  TEST_ASSERT_TRUE(c.begin(f, 3));
+  TEST_ASSERT_EQUAL_UINT32(0, c.pending());
+  for (uint32_t i = 0; i < 10; ++i) TEST_ASSERT_TRUE(c.append(recordAt(i)));
+
+  std::vector<LogRecord> got = c.peek(4);
+  TEST_ASSERT_EQUAL_UINT32(4, got.size());
+  TEST_ASSERT_EQUAL_UINT32(recordAt(0).time, got[0].time);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 70.25f, got[0].tempF);
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, 1001.2f, got[0].pressureHpa);
+  TEST_ASSERT_FALSE(got[0].hasHumidity);
+  TEST_ASSERT_EQUAL_INT(40, got[0].heatPct);
+  TEST_ASSERT_TRUE(got[0].partial);
+  TEST_ASSERT_FALSE(got[0].modeOff);
+
+  // Not marked: the same ones again. Marked: the next ones, also after a restart.
+  TEST_ASSERT_EQUAL_UINT32(recordAt(0).time, c.peek(4)[0].time);
+  TEST_ASSERT_TRUE(c.markSent());
+  TEST_ASSERT_EQUAL_UINT32(6, c.pending());
+  LogCache again;
+  TEST_ASSERT_TRUE(again.begin(f, 3));
+  TEST_ASSERT_EQUAL_UINT32(6, again.pending());
+  TEST_ASSERT_TRUE(again.append(recordAt(10)));
+  got = again.peek(100);
+  TEST_ASSERT_EQUAL_UINT32(7, got.size());
+  TEST_ASSERT_EQUAL_UINT32(recordAt(4).time, got.front().time);
+  TEST_ASSERT_EQUAL_UINT32(recordAt(10).time, got.back().time);
+  TEST_ASSERT_TRUE(again.markSent());
+  TEST_ASSERT_EQUAL_UINT32(0, again.pending());
+  TEST_ASSERT_EQUAL_UINT32(0, again.peek(100).size());
+}
+
+static void test_cache_drops_oldest_when_full() {
+  RamFlash f(3);
+  LogCache c;
+  c.begin(f, 3);
+  const uint32_t n = LogCache::kPerSector * 4 + 5;  // drops the first two sectors
+  for (uint32_t i = 0; i < n; ++i) TEST_ASSERT_TRUE(c.append(recordAt(i)));
+  for (int pass = 0; pass < 2; ++pass) {
+    TEST_ASSERT_EQUAL_UINT32(LogCache::kPerSector * 2 + 5, c.pending());
+    const std::vector<LogRecord> got = c.peek(n);
+    TEST_ASSERT_EQUAL_UINT32(c.pending(), got.size());
+    TEST_ASSERT_EQUAL_UINT32(recordAt(LogCache::kPerSector * 2).time, got.front().time);
+    TEST_ASSERT_EQUAL_UINT32(recordAt(n - 1).time, got.back().time);
+    c.begin(f, 3);  // the same after a restart
+  }
+}
+
+static void test_cache_power_cuts() {
+  RamFlash f(3);
+  LogCache c;
+  c.begin(f, 3);
+  for (uint32_t i = 0; i < 5; ++i) c.append(recordAt(i));
+  f.mem[6 * LogCache::kRecord] = 0x12;  // the sixth record only started
+  c.begin(f, 3);
+  TEST_ASSERT_EQUAL_UINT32(5, c.pending());
+  TEST_ASSERT_TRUE(c.append(recordAt(6)));
+  TEST_ASSERT_EQUAL_UINT32(6, c.peek(100).size());
+
+  while (c.pending() < LogCache::kPerSector - 1) c.append(recordAt(c.pending() + 1));
+  f.erase(LogCache::kSector);  // next sector erased, then power lost before its header
+  c.begin(f, 3);
+  TEST_ASSERT_EQUAL_UINT32(LogCache::kPerSector - 1, c.pending());
+  TEST_ASSERT_TRUE(c.append(recordAt(1000)));
+  TEST_ASSERT_EQUAL_UINT32(LogCache::kPerSector, c.peek(1000).size());
+}
+
+static void test_server_text() {
+  std::string s = " http://192.168.1.5/ ";
+  TEST_ASSERT_TRUE(cleanServer(s));
+  TEST_ASSERT_EQUAL_STRING("192.168.1.5:5080", s.c_str());
+  s = "my-pc.local:80";
+  TEST_ASSERT_TRUE(cleanServer(s));
+  TEST_ASSERT_EQUAL_STRING("my-pc.local:80", s.c_str());
+  s = "";
+  TEST_ASSERT_TRUE(cleanServer(s));
+  for (const char* bad : {"a b", "host:", "host:0", "host:70000", "host:8x", ":80", "host/path", "https://host"}) {
+    s = bad;
+    TEST_ASSERT_FALSE(cleanServer(s));
+  }
+  TEST_ASSERT_TRUE(validToken("abcdefgh23456789"));
+  TEST_ASSERT_FALSE(validToken("short"));
+  TEST_ASSERT_FALSE(validToken("abcdefgh2345678\n"));
+}
+
+static void test_upload_json() {
+  LogRecord r = recordAt(0);
+  LogRecord none;
+  none.time = 1700000400;
+  TEST_ASSERT_EQUAL_STRING(
+      "{\"device\":\"a1b2c3d4e5f6\",\"name\":\"The \\\"Den\\\"\",\"readings\":["
+      "{\"time\":1700000100,\"tempF\":70.25,\"humidity\":null,\"pressureHpa\":1001.2,\"setpointF\":68.0,"
+      "\"heatPct\":40,\"sensorFault\":false,\"modeOff\":false,\"partial\":true},"
+      "{\"time\":1700000400,\"tempF\":null,\"humidity\":null,\"pressureHpa\":null,\"setpointF\":0.0,"
+      "\"heatPct\":0,\"sensorFault\":false,\"modeOff\":false,\"partial\":false}]}",
+      uploadJson("a1b2c3d4e5f6", "The \"Den\"", {r, none}).c_str());
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_no_heat_until_min_off_after_boot);
@@ -265,5 +443,12 @@ int main(int, char**) {
   RUN_TEST(test_wifi_validation);
   RUN_TEST(test_clean_name);
   RUN_TEST(test_html_escape);
+  RUN_TEST(test_log_interval_averages);
+  RUN_TEST(test_log_interval_fault_and_partial);
+  RUN_TEST(test_cache_keeps_and_sends_in_order);
+  RUN_TEST(test_cache_drops_oldest_when_full);
+  RUN_TEST(test_cache_power_cuts);
+  RUN_TEST(test_server_text);
+  RUN_TEST(test_upload_json);
   return UNITY_END();
 }

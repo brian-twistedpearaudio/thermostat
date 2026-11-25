@@ -1,0 +1,4 @@
+bin/
+obj/
+# Readings and the API token
+data/

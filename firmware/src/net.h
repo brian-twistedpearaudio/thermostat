@@ -25,6 +25,13 @@ struct Status {
   char apPassword[16] = "";
 };
 
+// Where records are sent, from the setup page.
+struct Server {
+  char address[64] = "";  // host:port; empty if none
+  char token[65] = "";
+};
+Server server();  // a copy; safe from any task
+
 void begin();
 void startSetup();   // open the hotspot
 void stopSetup();    // close it and go back to the saved network

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Thermostats</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header><h1>Thermostats</h1><button id="forget" type="button" hidden>Forget token</button></header>
+
+<form id="login" hidden>
+  <label for="token">Server token</label>
+  <input id="token" type="password" autocomplete="off" required>
+  <label class="check"><input id="remember" type="checkbox"> Remember it in this browser</label>
+  <button type="submit">Open</button>
+  <p>It is in <code>data/token.txt</code> on the server.</p>
+</form>
+
+<main id="main" hidden>
+  <div class="filters">
+    <label>Range
+      <select id="range">
+        <option value="1">Last 24 hours</option>
+        <option value="7">Last 7 days</option>
+        <option value="30">Last 30 days</option>
+        <option value="365">Last year</option>
+        <option value="custom">Custom</option>
+      </select>
+    </label>
+    <span id="custom" hidden>
+      <label>From <input id="from" type="date"></label>
+      <label>To <input id="to" type="date"></label>
+    </span>
+    <label class="check"><input id="setpoint" type="checkbox" checked> Show set points (thin lines)</label>
+  </div>
+  <div class="columns">
+    <fieldset><legend>Thermostats</legend><div id="devices"></div></fieldset>
+    <div class="content">
+      <div id="charts"></div>
+      <details id="tableBox"><summary>Table</summary><div id="table"></div></details>
+    </div>
+  </div>
+</main>
+<p id="message" role="status"></p>
+<div id="tip" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>

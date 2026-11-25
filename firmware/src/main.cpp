@@ -1,5 +1,5 @@
-// Thermostat firmware — sensor, control, relay, screens, Wi-Fi and network time.
-// Not yet included: logging, graph/info screens, REST API.
+// Thermostat firmware — sensor, control, relay, screens, Wi-Fi, network time and 5-minute records.
+// Not yet included: graph/info screens, REST API.
 #include <Arduino.h>
 #include <Wire.h>
 #include <esp_task_wdt.h>
@@ -8,6 +8,7 @@
 
 #include "config.h"
 #include "control.h"
+#include "datalog.h"
 #include "display.h"
 #include "net.h"
 #include "pins.h"
@@ -19,6 +20,7 @@
 #include "ui_idle.h"
 #include "ui_settings.h"
 #include "ui_wifi.h"
+#include "uplink.h"
 
 static thermo::Controller s_controller;
 static thermo::Schedule s_schedule;  // empty until defaults are supplied
@@ -31,12 +33,28 @@ static uint32_t uptimeSeconds() {
   return static_cast<uint32_t>(esp_timer_get_time() / 1000000LL);
 }
 
+static bool clockSet() { return time(nullptr) > 1700000000; }
+
+static void logTick() {
+  const sensor::Reading& r = sensor::latest();
+  thermo::LogSample s;
+  s.ok = r.ok;
+  s.tempF = r.tempF;
+  s.hasHumidity = r.hasHumidity;
+  s.humidity = r.humidity;
+  s.pressureHpa = r.pressureHpa;
+  s.setpointF = s_controller.setpoint();
+  s.heating = s_controller.heating();
+  s.modeOff = !s_settings.heatMode;
+  datalog::tick(clockSet(), static_cast<uint32_t>(time(nullptr)), s);
+}
+
 // Runs the schedule, control logic and relay, then refreshes the screen.
 static void controlAndRefresh() {
   // Local time is only valid once the clock has been set by network time.
   struct tm tmNow = {};
   const time_t now = time(nullptr);
-  const bool timeValid = now > 1700000000;
+  const bool timeValid = clockSet();
   if (timeValid) localtime_r(&now, &tmNow);
   const uint16_t minuteOfDay = static_cast<uint16_t>(tmNow.tm_hour * 60 + tmNow.tm_min);
 
@@ -104,13 +122,15 @@ static void onSettingStep(thermo::SettingId id, int dir) {
 static void refreshWifi() {
   const net::Status w = net::status();
   ui::homeSetName(w.name);
-  ui::wifiUpdate(w);
+  char serverText[48];
+  uplink::summary(serverText, sizeof(serverText));
+  ui::wifiUpdate(w, serverText);
   ui::settingsSetWifi(ui::wifiSummary(w));
   display::keepAwake(w.state == net::State::Starting || w.state == net::State::Hotspot ||
                      w.state == net::State::Trying);
 
   static bool timeReported = false;
-  if (!timeReported && time(nullptr) > 1700000000) {
+  if (!timeReported && clockSet()) {
     timeReported = true;
     Serial.println("Clock is set");
   }
@@ -141,6 +161,7 @@ void setup() {
 
   controlAndRefresh();
   net::begin();
+  uplink::begin();
   refreshWifi();
 
   // If loop() stops running, reset the chip; relay::begin() then starts with heat off.
@@ -159,6 +180,7 @@ void loop() {
   if (now - s_lastControlMs >= 1000) {
     s_lastControlMs = now;
     controlAndRefresh();
+    logTick();
     refreshWifi();
   }
   delay(5);

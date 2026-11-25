@@ -14,6 +14,7 @@ Status: draft 2, 2026-11-14. Nothing here is built yet. Items marked **(proposed
 | Relay | Omron G6K-2P-DC5 (single-side stable, 5 V coil): one GPIO, on = energised |
 | BME688 gas sensor | Not used for now; temperature, humidity, pressure only. Driver kept so gas can be added later |
 | Schedules | One schedule of time-of-day set points, the same every day, stored and run on the thermostat; defaults to be supplied |
+| Logging | (2026-11-25) The thermostat sends each 5-minute record to the server and keeps no history of its own. While the server is not responding, records are cached on the thermostat and uploaded when it is available again. The server runs on the development Windows PC for now. History is requested from the server per device. Replaces the on-device ring buffer and `/history` below, and answers questions 6 and 10: the API and database have a device ID from the start |
 | Manual changes | Last until the next schedule event, then the schedule resumes. No Hold |
 
 ## 1. Scope

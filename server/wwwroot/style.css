@@ -1,0 +1,66 @@
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --text: #0b0b0b; --text2: #52514e; --muted: #6f6d68;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11, 11, 11, .12);
+  --s0: #2a78d6; --s1: #eb6834; --s2: #1baf7a; --s3: #eda100;
+  --s4: #e87ba4; --s5: #008300; --s6: #6250d6; --s7: #e34948;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --text: #f0efec; --text2: #c3c2b7; --muted: #98968f;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255, 255, 255, .12);
+    --s0: #3987e5; --s1: #d95926; --s2: #199e70; --s3: #c98500;
+    --s4: #d55181; --s5: #0ca30c; --s6: #9085e9; --s7: #e66767;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0 auto; max-width: 1320px; padding: 16px; background: var(--page); color: var(--text);
+  font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+h1 { font-size: 22px; margin: 0; }
+h2 { font-size: 15px; margin: 0 0 4px; }
+h2 span { color: var(--text2); font-weight: 400; }
+input, select, button { font: inherit; color: inherit; background: var(--surface);
+  border: 1px solid var(--axis); border-radius: 6px; padding: 5px 9px; }
+button, select, input[type=checkbox] { cursor: pointer; }
+#login { display: grid; gap: 10px; max-width: 340px; justify-items: start; }
+#login #token { width: 100%; }
+#login p { margin: 0; color: var(--text2); }
+.filters, .filters #custom, #devices { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; }
+.check { display: inline-flex; align-items: center; gap: 6px; }
+fieldset { border: 1px solid var(--border); border-radius: 8px; margin: 14px 0; padding: 6px 12px 10px; }
+/* Thermostats on the left, staying in view while the charts scroll; above the charts on a narrow screen. */
+.columns { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 16px; align-items: start; margin-top: 14px; }
+.columns fieldset { margin: 0; min-width: 0; position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; }
+.columns .card:first-child { margin-top: 8px; }
+.columns .device { flex-wrap: wrap; width: 100%; }
+.columns .device span:last-of-type { overflow-wrap: anywhere; min-width: 0; }
+.columns .device small { flex-basis: 100%; padding-left: 47px; margin-top: -4px; }
+@media (max-width: 700px) {
+  .columns { grid-template-columns: minmax(0, 1fr); }
+  .columns fieldset { position: static; max-height: none; }
+}
+legend { color: var(--text2); padding: 0 4px; }
+.device { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
+.device small { color: var(--text2); }
+.key { display: inline-block; width: 18px; height: 3px; border-radius: 2px; background: transparent; flex: none; }
+.card { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 12px; margin-bottom: 14px; }
+#charts.loading { opacity: .5; }
+svg { display: block; width: 100%; touch-action: pan-y; outline-offset: 2px; }
+svg text { font-size: 12px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+.grid { stroke: var(--grid); } .axis { stroke: var(--axis); } .cross { stroke: var(--muted); }
+.line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.line.set { stroke-width: 1; }
+#tip { position: fixed; z-index: 2; pointer-events: none; background: var(--surface); border: 1px solid var(--axis);
+  border-radius: 8px; padding: 8px 10px; box-shadow: 0 3px 12px rgba(0, 0, 0, .18); font-size: 13px; max-width: 300px; }
+#tip .when { color: var(--text2); }
+#tip .row { display: flex; align-items: center; gap: 7px; }
+#tip .row span:last-child { color: var(--text2); overflow-wrap: anywhere; }
+#table { overflow: auto; max-height: 420px; margin-top: 8px; }
+table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 3px 14px 3px 0; white-space: nowrap; border-bottom: 1px solid var(--grid); }
+summary { cursor: pointer; }
+#message { color: var(--text2); }

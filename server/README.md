@@ -14,6 +14,41 @@ The first run makes `data/token.txt`. Enter that token, and this PC's address su
 
 `data/` holds the readings (`thermostat.db`) and the token, and is not committed.
 
+## Run as a Windows service
+
+The service starts with Windows, restarts if it fails, and runs as the virtual account `NT SERVICE\ThermostatServer`, which has no password and can write only to its data folder and where any ordinary user can. It needs the .NET 10 SDK to build and the ASP.NET Core 10 runtime installed for all users (the SDK installer includes it).
+
+Stop the server in its terminal (Ctrl+C), then in PowerShell opened with **Run as administrator**, in this folder:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install-service.ps1 -CopyFrom .\data
+```
+
+This copies the readings and the token from `data`, so the thermostats need no change; `data` itself is left as it was. It is then an old copy: do not run a server from it again. For a first install with no readings use `-NewData` instead of `-CopyFrom`. One of them is required the first time, and neither ever overwrites existing data.
+
+| | Folder |
+|---|---|
+| Program | `C:\Program Files\Thermostat Server\app` |
+| Readings and token | `C:\ProgramData\ThermostatServer` |
+
+Only administrators and the service can open the data folder. To read the token, run `Get-Content C:\ProgramData\ThermostatServer\token.txt` as administrator. Copy the folder for a backup only with the service stopped.
+
+The scripts do not change the firewall. Allow inbound TCP 5080 for `Thermostat.Server.exe` in the program folder, on **Private networks only**.
+
+To update after changing the source (the service stops briefly; settings come from this folder's `appsettings.json`, and the scripts expect port 5080):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\update-service.ps1
+```
+
+To uninstall, keeping the data folder:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\uninstall-service.ps1
+```
+
+Warnings and errors go to Event Viewer, **Windows Logs**, **Application**.
+
 ## Charts
 
 Open `http://<this PC's address>:5080` in a browser on the home network (`http://localhost:5080` on this PC) and enter the token. Select up to 8 thermostats and a range; ranges over 2 days show averages. The charts refresh each minute. A remembered token is kept in that browser until **Forget token**.
@@ -38,4 +73,4 @@ One shared token over plain HTTP, for a home network only. Do not open the port 
 
 ## Not yet included
 
-CSV export, control of the thermostat, running as a Windows service.
+CSV export, control of the thermostat.

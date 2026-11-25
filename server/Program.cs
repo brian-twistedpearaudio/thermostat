@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Hosting.WindowsServices;
 using Thermostat.Server;
 
 const int MaxBatch = 500;
@@ -8,12 +9,22 @@ const int MaxPoints = 10_000;
 const int MaxGraphPoints = 400;
 const long MaxRange = 10L * 366 * 86400;
 
-var builder = WebApplication.CreateBuilder(args);
+// A published copy has its files beside the program, whatever folder it is started from.
+var published = Directory.Exists(Path.Combine(AppContext.BaseDirectory, "wwwroot"));
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    ContentRootPath = published ? AppContext.BaseDirectory : null,
+});
+// Each does nothing unless started as that kind of service.
+builder.Services.AddWindowsService(o => o.ServiceName = "ThermostatServer");
+builder.Services.AddSystemd();
 builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = 256 * 1024);
 var app = builder.Build();
 
 var folder = Path.GetFullPath(app.Configuration["DataFolder"] ?? "data", app.Environment.ContentRootPath);
-Directory.CreateDirectory(folder);
+// The install script makes the service's folder. If it is missing, stop rather than start again empty.
+if (!WindowsServiceHelpers.IsWindowsService()) Directory.CreateDirectory(folder);
 var store = new ReadingStore(Path.Combine(folder, "thermostat.db"));
 
 // The token is made once and kept in a file; type it into the thermostat's setup page.

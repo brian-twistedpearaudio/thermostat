@@ -1,0 +1,44 @@
+[Unit]
+Description=Thermostat server
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+# The install script makes this folder. If it is missing, stop rather than start again empty.
+AssertPathExists=/var/lib/thermostat-server
+
+[Service]
+Type=notify
+ExecStart=/opt/thermostat-server/app/Thermostat.Server --DataFolder /var/lib/thermostat-server
+WorkingDirectory=/opt/thermostat-server/app
+User=thermostat-server
+Group=thermostat-server
+Restart=on-failure
+RestartSec=10
+StateDirectory=thermostat-server
+StateDirectoryMode=0700
+UMask=0077
+
+# MemoryDenyWriteExecute is left out: .NET compiles code as it runs.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectClock=yes
+ProtectControlGroups=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target

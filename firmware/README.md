@@ -19,7 +19,9 @@ PlatformIO project for the LilyGO T-Display-S3 Touch. Open this `firmware` folde
 
 - 5-minute records (average temperature, humidity and pressure, set point, share of time heating), sent to the server in `../server`, which keeps the history. While it is not answering they are kept in flash (1 MB, about 226 days) and sent, oldest first, when it is back. The server address and token are set on the Wi-Fi setup page; the Wi-Fi screen shows the state
 
-Not yet included: Graph / Info screens, REST API, OTA.
+- Graph screen: tap the temperature on Home. Temperature (white, with a grey band from lowest to highest) and set point (orange) over 1 day, 5 days or a month, fetched from the server and refreshed each 5 minutes
+
+Not yet included: Info screen, pulling configuration from the server, OTA. The thermostat will have no REST API: it makes every connection itself. Its only HTTP server is the temporary setup page.
 
 ## Commands
 
@@ -31,14 +33,15 @@ Not yet included: Graph / Info screens, REST API, OTA.
 
 ## Status of checks
 
-- `lib/thermo_core` (control and schedule logic): 13 control and schedule tests passed earlier. 3 settings and 3 Wi-Fi and name text tests and 7 record, cache and upload tests added since; they compile, but have **not been run** (no PC compiler yet).
+- `lib/thermo_core` (control and schedule logic): 13 control and schedule tests passed earlier. 3 settings and 3 Wi-Fi and name text tests and 7 record, cache and upload tests and 2 graph tests added since; they compile, but have **not been run** (no PC compiler yet).
 - Firmware builds and boots on the bare T-Display-S3 board (no sensor or relay) with no resets in 25 s. Set point +, the settings screen (scrolling and buttons), saving settings, Off mode display, the look of the dimmed screen and wake-up touch were checked by hand.
 - Wi-Fi setup through the hotspot was checked on the board: a failed first attempt was reported and setup could be repeated, the second attempt connected, and the log showed network time setting the clock. The `request handler not found` log lines during setup are harmless (requests for pages that do not exist, answered by a redirect to the setup page).
 - Setting a thermostat name, and reconnecting to Wi-Fi after a reset without setup, were also checked on the board.
 - A BMP280 was detected at 0x76 and shows temperatures; no I2C errors in 25 s.
 - The relay followed heat calls, minimum times (shortened to 5 s for the test) and what appears to be Mode Off; with the full times, heat came on 180 s after startup. No boiler was connected.
 - Records reached the server. With the server stopped, 2 records were kept and then sent after it restarted, with none missing. Some serial lines came out cut short during this.
-- **Not yet confirmed on hardware:** cached records surviving a thermostat restart, recovering from a router outage, keeping the saved network when a new one fails, a watchdog reset, sensor accuracy and fault handling (unplugged, power blip), the BME280 and BME688, the relay staying off during a reset and with no sensor.
+- The Graph screen was checked by eye with under an hour of records.
+- **Not yet confirmed on hardware:** cached records surviving a thermostat restart, recovering from a router outage, keeping the saved network when a new one fails, a watchdog reset, sensor accuracy and fault handling (unplugged, power blip), the BME280 and BME688, the Graph screen with days of real records, the relay staying off during a reset and with no sensor.
 
 ## Check on first power-up
 

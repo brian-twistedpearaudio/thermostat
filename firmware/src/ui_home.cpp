@@ -59,6 +59,8 @@ static lv_obj_t* s_setValue;
 static lv_obj_t* s_screen;
 static void (*s_onDelta)(int) = nullptr;
 static void (*s_onSettings)() = nullptr;
+static void (*s_onGraph)() = nullptr;
+static lv_obj_t* s_graphIcon;
 
 // y for a label so that its first line's baseline sits at `baseline`.
 static int yForBaseline(const lv_font_t* f, int baseline) {
@@ -116,6 +118,10 @@ static void settingsEvent(lv_event_t*) {
   if (s_onSettings) s_onSettings();
 }
 
+static void graphEvent(lv_event_t*) {
+  if (s_onGraph) s_onGraph();
+}
+
 void homeSetName(const char* name) {
   static char shown[24] = "";
   const char* text = name[0] != '\0' ? name : "Inside";
@@ -135,8 +141,9 @@ void homeSetName(const char* name) {
 
 void homeShow() { lv_screen_load(s_screen); }
 
-void homeCreate(void (*onSetpointDelta)(int delta), void (*onSettings)()) {
+void homeCreate(void (*onSetpointDelta)(int delta), void (*onSettings)(), void (*onGraph)()) {
   s_onDelta = onSetpointDelta;
+  s_onGraph = onGraph;
   s_onSettings = onSettings;
 
   lv_obj_t* scr = lv_screen_active();
@@ -212,6 +219,22 @@ void homeCreate(void (*onSetpointDelta)(int delta), void (*onSettings)()) {
   makeLabel(s_faultBox, &ui_font_semi_11, kFaultText, "Sensor fault \xC2\xB7 heat is off");
   lv_obj_set_hidden(s_faultBox, true);
 
+  // Graph: three small bars at the bottom right; the touch target is the rest of the left column.
+  s_graphIcon = lv_obj_create(scr);
+  lv_obj_remove_style_all(s_graphIcon);
+  lv_obj_set_clickable(s_graphIcon, false);
+  lv_obj_set_scrollable(s_graphIcon, false);
+  lv_obj_set_pos(s_graphIcon, kPad + kLeftW - 14, kBottomBaseline - 11);
+  lv_obj_set_size(s_graphIcon, 13, 12);
+  static const int kBars[] = {5, 12, 8};
+  for (int i = 0; i < 3; ++i) lv_obj_set_pos(makeShape(s_graphIcon, 3, kBars[i], kMuted, 1), i * 5, 12 - kBars[i]);
+  lv_obj_t* graphHit = lv_obj_create(scr);
+  lv_obj_remove_style_all(graphHit);
+  lv_obj_set_pos(graphHit, 0, 48);
+  lv_obj_set_size(graphHit, kPad + kLeftW, 170 - 48);
+  lv_obj_set_scrollable(graphHit, false);
+  lv_obj_add_event_cb(graphHit, graphEvent, LV_EVENT_CLICKED, nullptr);
+
   // ---- Right column: +, set point, - (canvas gap 8 -> 4) ----
   makeButton(scr, kPad, true, +1);
   makeButton(scr, 170 - kPad - kBtnH, false, -1);
@@ -256,6 +279,7 @@ void homeUpdate(const HomeState& s) {
                  yForBaseline(&ui_font_frac_32, kTempBaseline));
 
   // Bottom row: fault box, or humidity plus the Heating pill
+  lv_obj_set_hidden(s_graphIcon, !s.sensorOk);  // the fault box covers its place
   if (!s.sensorOk) {
     lv_label_set_text(s_humidity, "");
     lv_obj_set_hidden(s_heatPill, true);

@@ -19,7 +19,7 @@ PlatformIO project for the LilyGO T-Display-S3 Touch. Open this `firmware` folde
 
 - 5-minute records (average temperature, humidity and pressure, set point, share of time heating), sent to the server in `../server`, which keeps the history. While it is not answering they are kept in flash (1 MB, about 226 days) and sent, oldest first, when it is back. The server address and token are set on the Wi-Fi setup page; the Wi-Fi screen shows the state
 
-- Status line at the bottom of Home: "Heat on", "Server not reachable", "Server rejected the token", "No Wi-Fi". Several are joined, and the text scrolls if it does not fit; on a sensor fault they follow the fault text. The sync with the server, each 10 s, is the check
+- Status line at the bottom of Home: "Heat on", "Heat waiting", "Server not reachable", "Server rejected the token", "No Wi-Fi". Several are joined, and the text scrolls if it does not fit; on a sensor fault they follow the fault text. While a relay change waits for a minimum on or off time, the background of the line is a bar that shrinks until the change. The sync with the server, each 10 s, is the check
 - Graph screen: tap the temperature on Home. Temperature (white, with a grey band from lowest to highest) and set point (orange) over 1 day, 5 days or a month, fetched from the server and refreshed each 5 minutes
 
 - Configuration from the server: set point, mode, swing, sensor offset, schedule and name are synced each 10 s, and soon after a change on the screen; the newest change of each wins ([docs/sync.md](../docs/sync.md)). While the server is down the thermostat heats on what it has, kept in flash
@@ -36,7 +36,7 @@ Not yet included: Info screen, OTA. The thermostat will have no REST API: it mak
 
 ## Status of checks
 
-- `lib/thermo_core`: all 32 logic tests (13 control and schedule, 3 settings, 3 Wi-Fi and name text, 7 record, cache and upload, 2 graph, 4 sync) passed on the PC. `.github/workflows/ci.yml` is set to run them on pull requests and on pushes to `develop` and `main`, and to build the firmware and the server.
+- `lib/thermo_core`: all 33 logic tests (14 control and schedule, 3 settings, 3 Wi-Fi and name text, 7 record, cache and upload, 2 graph, 4 sync) passed on the PC. `.github/workflows/ci.yml` is set to run them on pull requests and on pushes to `develop` and `main`, and to build the firmware and the server.
 - Firmware builds and boots on the bare T-Display-S3 board (no sensor or relay) with no resets in 25 s. Set point +, the settings screen (scrolling and buttons), saving settings, Off mode display, the look of the dimmed screen and wake-up touch were checked by hand.
 - Wi-Fi setup through the hotspot was checked on the board: a failed first attempt was reported and setup could be repeated, the second attempt connected, and the log showed network time setting the clock. The `request handler not found` log lines during setup are harmless (requests for pages that do not exist, answered by a redirect to the setup page).
 - Setting a thermostat name, and reconnecting to Wi-Fi after a reset without setup, were also checked on the board.
@@ -46,6 +46,7 @@ Not yet included: Info screen, OTA. The thermostat will have no REST API: it mak
 - The Graph screen was checked by eye with under an hour of records.
 - The status line was checked by hand with the server stopped and started.
 - Configuration sync was tried by hand on the board with the real server and page, and worked.
+- The countdown bar was checked by eye on the board.
 - **Not yet confirmed on hardware:** cached records surviving a thermostat restart, recovering from a router outage, keeping the saved network when a new one fails, a watchdog reset, sensor accuracy and fault handling (unplugged, power blip), the BME280 and BME688, the Graph screen with days of real records, the status line's "No Wi-Fi" and token messages, the relay staying off during a reset and with no sensor.
 
 ## Check on first power-up

@@ -75,6 +75,8 @@ static void controlAndRefresh() {
   st.heating = heat;
   st.modeOff = !s_settings.heatMode;
   st.overridden = s_setpoints.overridden() && s_schedule.count() > 0;
+  st.waitS = s_controller.waitS();
+  st.waitTotalS = s_controller.waitTotalS();
   st.notice = uplink::notice();
   st.timeValid = timeValid;
   st.hour = static_cast<uint8_t>(tmNow.tm_hour);

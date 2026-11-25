@@ -38,11 +38,16 @@ class Controller {
 
   bool heating() const { return heating_; }
 
+  // While a change is held back by a minimum time: seconds until it, and that whole time. Else 0.
+  uint32_t waitS() const { return waitS_; }
+  uint32_t waitTotalS() const { return waitTotalS_; }
+
  private:
   ControlConfig cfg_;
   Mode mode_ = Mode::Heat;
   float setpointF_ = 68.0f;
   bool heating_ = false;
+  uint32_t waitS_ = 0, waitTotalS_ = 0;
   uint32_t lastChangeS_ = 0;  // boot counts as "just turned off"
 };
 

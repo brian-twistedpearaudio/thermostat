@@ -7,6 +7,7 @@ namespace ui {
 struct HomeState {
   bool sensorOk = false;
   float tempF = 0;
+  bool hasHumidity = false;  // false with a BMP280
   float humidity = 0;
   float setpointF = 68;
   bool heating = false;

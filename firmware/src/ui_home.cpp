@@ -44,7 +44,11 @@ static const int kBottomBaseline = 150;  // humidity and the Heating pill text
 static const int kCaptionBaseline = 74;  // SET / MANUAL
 static const int kSetBaseline = 99;      // set point value
 
-static const int kMaxNameW = 92;         // leaves room for the gear and "12:00 PM"
+static const int kPillPad = 7, kDot = 6, kDotGap = 4;
+static const int kPillSpace = 154;       // status line, up to the graph icon
+static const int kFaultTextW = 138;      // room in the fault box beside its icon
+
+static const int kMaxNameW = 92;        // leaves room for the gear and "12:00 PM"
 
 static lv_obj_t* s_name;
 static lv_obj_t* s_gear;
@@ -52,8 +56,11 @@ static lv_obj_t* s_clock;
 static lv_obj_t* s_whole;
 static lv_obj_t* s_frac;
 static lv_obj_t* s_humidity;
-static lv_obj_t* s_heatPill;
-static lv_obj_t* s_faultBox;
+static lv_obj_t* s_pill;       // status line
+static lv_obj_t* s_pillDot;
+static lv_obj_t* s_pillText;
+static lv_obj_t* s_faultBox;   // takes its place on a sensor fault
+static lv_obj_t* s_faultText;
 static lv_obj_t* s_setCaption;
 static lv_obj_t* s_setValue;
 static lv_obj_t* s_screen;
@@ -112,6 +119,21 @@ static void makeButton(lv_obj_t* parent, int y, bool plus, int delta) {
     lv_obj_t* v = makeShape(b, 3, 14, kText, 2);
     lv_obj_center(v);
   }
+}
+
+// Status text, which scrolls if it is wider than maxW. Call often: an unchanged text is left alone,
+// because setting it again would restart the scrolling.
+static void setStatusText(lv_obj_t* label, const char* text, int maxW) {
+  void* width = reinterpret_cast<void*>(static_cast<intptr_t>(maxW));
+  if (strcmp(lv_label_get_text(label), text) == 0 && lv_obj_get_user_data(label) == width) return;
+  lv_obj_set_user_data(label, width);
+  lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_CLIP);
+  lv_obj_set_width(label, LV_SIZE_CONTENT);
+  lv_label_set_text(label, text);
+  lv_obj_update_layout(label);
+  if (lv_obj_get_width(label) <= maxW) return;
+  lv_obj_set_width(label, maxW);
+  lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_SCROLL_CIRCULAR);
 }
 
 static void settingsEvent(lv_event_t*) {
@@ -182,24 +204,24 @@ void homeCreate(void (*onSetpointDelta)(int delta), void (*onSettings)(), void (
   lv_obj_set_pos(s_whole, kPad, yForBaseline(&ui_font_temp_75, kTempBaseline));
   s_frac = makeLabel(scr, &ui_font_frac_32, kMuted, "\xC2\xB0");
 
-  // Bottom row: humidity text, then the Heating pill (canvas padding 6/14 -> 3/7, gap 16 -> 8)
+  // Bottom row: humidity text, then the status line (canvas padding 6/14 -> 3/7, gap 16 -> 8)
   s_humidity = makeLabel(scr, &ui_font_body_11, kMuted, "");
   lv_obj_set_pos(s_humidity, kPad, yForBaseline(&ui_font_body_11, kBottomBaseline));
 
-  s_heatPill = lv_obj_create(scr);
-  lv_obj_remove_style_all(s_heatPill);
-  lv_obj_set_clickable(s_heatPill, false);
-  lv_obj_set_size(s_heatPill, LV_SIZE_CONTENT, 19);
-  lv_obj_set_style_pad_hor(s_heatPill, 7, 0);
-  lv_obj_set_style_radius(s_heatPill, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_bg_opa(s_heatPill, LV_OPA_COVER, 0);
-  lv_obj_set_style_bg_color(s_heatPill, lv_color_hex(kHeatBg), 0);
-  lv_obj_set_flex_flow(s_heatPill, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(s_heatPill, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_column(s_heatPill, 4, 0);
-  makeShape(s_heatPill, 6, 6, kHeatDot, LV_RADIUS_CIRCLE);
-  makeLabel(s_heatPill, &ui_font_semi_11, kHeatText, "Heating");
-  lv_obj_set_hidden(s_heatPill, true);
+  s_pill = lv_obj_create(scr);
+  lv_obj_remove_style_all(s_pill);
+  lv_obj_set_clickable(s_pill, false);
+  lv_obj_set_scrollable(s_pill, false);
+  lv_obj_set_size(s_pill, LV_SIZE_CONTENT, 19);
+  lv_obj_set_style_pad_hor(s_pill, kPillPad, 0);
+  lv_obj_set_style_radius(s_pill, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_bg_opa(s_pill, LV_OPA_COVER, 0);
+  lv_obj_set_flex_flow(s_pill, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(s_pill, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(s_pill, kDotGap, 0);
+  s_pillDot = makeShape(s_pill, kDot, kDot, kHeatDot, LV_RADIUS_CIRCLE);
+  s_pillText = makeLabel(s_pill, &ui_font_semi_11, kHeatText, "");
+  lv_obj_set_hidden(s_pill, true);
 
   // Sensor fault box: full column width, canvas padding 10/16 -> 5/8, radius 16 -> 8,
   // icon 28 -> 14 px, gap 12 -> 6, text 22 px / 600 -> 11 px SemiBold. Sits on the bottom edge.
@@ -216,7 +238,7 @@ void homeCreate(void (*onSetpointDelta)(int delta), void (*onSettings)(), void (
   lv_obj_set_flex_align(s_faultBox, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_pad_column(s_faultBox, 6, 0);
   makeLabel(s_faultBox, &lv_font_montserrat_14, kFaultText, LV_SYMBOL_WARNING);
-  makeLabel(s_faultBox, &ui_font_semi_11, kFaultText, "Sensor fault \xC2\xB7 heat is off");
+  s_faultText = makeLabel(s_faultBox, &ui_font_semi_11, kFaultText, "");
   lv_obj_set_hidden(s_faultBox, true);
 
   // Graph: three small bars at the bottom right; the touch target is the rest of the left column.
@@ -278,12 +300,16 @@ void homeUpdate(const HomeState& s) {
   lv_obj_set_pos(s_frac, kPad + lv_obj_get_width(s_whole) - 2,
                  yForBaseline(&ui_font_frac_32, kTempBaseline));
 
-  // Bottom row: fault box, or humidity plus the Heating pill
+  // Bottom row: fault box, or humidity plus the status line. Messages are joined into one text.
+  const bool notice = s.notice[0] != '\0';
+  char status[96];
   lv_obj_set_hidden(s_graphIcon, !s.sensorOk);  // the fault box covers its place
   if (!s.sensorOk) {
     lv_label_set_text(s_humidity, "");
-    lv_obj_set_hidden(s_heatPill, true);
+    lv_obj_set_hidden(s_pill, true);
     lv_obj_set_hidden(s_faultBox, false);
+    snprintf(status, sizeof(status), "Sensor fault \xC2\xB7 heat is off%s%s", notice ? " \xC2\xB7 " : "", s.notice);
+    setStatusText(s_faultText, status, kFaultTextW);
   } else {
     lv_obj_set_hidden(s_faultBox, true);
     buf[0] = '\0';
@@ -291,13 +317,20 @@ void homeUpdate(const HomeState& s) {
       snprintf(buf, sizeof(buf), "%d%% humidity", static_cast<int>(lroundf(s.humidity)));
     }
     lv_label_set_text(s_humidity, buf);
-    if (s.heating) {
+    if (s.heating || notice) {
       lv_obj_update_layout(s_humidity);
       const int offset = s.hasHumidity ? lv_obj_get_width(s_humidity) + 8 : 0;
-      lv_obj_set_pos(s_heatPill, kPad + offset, kBottomBaseline - 13);
-      lv_obj_set_hidden(s_heatPill, false);
+      lv_obj_set_pos(s_pill, kPad + offset, kBottomBaseline - 13);
+      // Orange while heating, grey for a notice alone.
+      lv_obj_set_style_bg_color(s_pill, lv_color_hex(s.heating ? kHeatBg : kSurface), 0);
+      lv_obj_set_style_bg_color(s_pillDot, lv_color_hex(s.heating ? kHeatDot : kMuted), 0);
+      lv_obj_set_style_text_color(s_pillText, lv_color_hex(s.heating ? kHeatText : kText), 0);
+      lv_obj_set_hidden(s_pill, false);
+      snprintf(status, sizeof(status), "%s%s%s", s.heating ? "Heat on" : "", s.heating && notice ? " \xC2\xB7 " : "",
+               s.notice);
+      setStatusText(s_pillText, status, kPillSpace - offset - 2 * kPillPad - kDot - kDotGap);
     } else {
-      lv_obj_set_hidden(s_heatPill, true);
+      lv_obj_set_hidden(s_pill, true);
     }
   }
 

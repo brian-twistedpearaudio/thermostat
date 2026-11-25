@@ -19,6 +19,7 @@ PlatformIO project for the LilyGO T-Display-S3 Touch. Open this `firmware` folde
 
 - 5-minute records (average temperature, humidity and pressure, set point, share of time heating), sent to the server in `../server`, which keeps the history. While it is not answering they are kept in flash (1 MB, about 226 days) and sent, oldest first, when it is back. The server address and token are set on the Wi-Fi setup page; the Wi-Fi screen shows the state
 
+- Status line at the bottom of Home: "Heat on", "Server not reachable", "Server rejected the token", "No Wi-Fi". Several are joined, and the text scrolls if it does not fit; on a sensor fault they follow the fault text. The server is checked each 30 s
 - Graph screen: tap the temperature on Home. Temperature (white, with a grey band from lowest to highest) and set point (orange) over 1 day, 5 days or a month, fetched from the server and refreshed each 5 minutes
 
 Not yet included: Info screen, pulling configuration from the server, OTA. The thermostat will have no REST API: it makes every connection itself. Its only HTTP server is the temporary setup page.
@@ -41,7 +42,8 @@ Not yet included: Info screen, pulling configuration from the server, OTA. The t
 - The relay followed heat calls, minimum times (shortened to 5 s for the test) and what appears to be Mode Off; with the full times, heat came on 180 s after startup. No boiler was connected.
 - Records reached the server. With the server stopped, 2 records were kept and then sent after it restarted, with none missing. Some serial lines came out cut short during this.
 - The Graph screen was checked by eye with under an hour of records.
-- **Not yet confirmed on hardware:** cached records surviving a thermostat restart, recovering from a router outage, keeping the saved network when a new one fails, a watchdog reset, sensor accuracy and fault handling (unplugged, power blip), the BME280 and BME688, the Graph screen with days of real records, the relay staying off during a reset and with no sensor.
+- The status line was checked by hand with the server stopped and started.
+- **Not yet confirmed on hardware:** cached records surviving a thermostat restart, recovering from a router outage, keeping the saved network when a new one fails, a watchdog reset, sensor accuracy and fault handling (unplugged, power blip), the BME280 and BME688, the Graph screen with days of real records, the status line's "No Wi-Fi" and token messages, the relay staying off during a reset and with no sensor.
 
 ## Check on first power-up
 

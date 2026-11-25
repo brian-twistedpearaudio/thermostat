@@ -18,7 +18,9 @@
 namespace uplink {
 
 static const uint32_t kSectors = 256;     // 1 MB: 65,280 records, about 226 days
-static const uint32_t kRetryMs = 60000;   // pause after a failed attempt
+static const uint32_t kRetryMs = 15000;   // pause after a failed attempt
+static const uint32_t kCheckMs = 30000;   // with nothing to send, the server is checked this often
+static const uint32_t kWifiNoticeMs = 40000;
 static const size_t kBatch = 24;
 static const int kQueueLength = 8;
 
@@ -204,7 +206,7 @@ static void task(void*) {
   if (s_pending > 0) Serial.printf("%lu records waiting for the server\n", static_cast<unsigned long>(s_pending));
 
   net::Server last = {};
-  uint32_t failedMs = 0;
+  uint32_t triedMs = 0;
   bool failed = false;
 
   for (;;) {
@@ -228,18 +230,20 @@ static void task(void*) {
       // Straight to the server if nothing older is waiting; otherwise behind it.
       if (s_cache.pending() > 0) {
         keep(rec);
-      } else if (!send(server, {rec})) {
-        keep(rec);
-        failed = true;
-        failedMs = millis();
+      } else {
+        failed = !send(server, {rec});
+        triedMs = millis();
+        if (failed) keep(rec);
       }
     }
 
-    const bool work = s_cache.pending() > 0 || s_link != Link::Ok;
-    if (work && net::status().state == net::State::Connected && (!failed || millis() - failedMs >= kRetryMs)) {
+    // With nothing waiting this sends an empty batch, which shows whether the server is there.
+    // Until the configuration pull exists: that will be the check instead.
+    const bool work = s_cache.pending() > 0 || s_link != Link::Ok || millis() - triedMs >= kCheckMs;
+    if (work && net::status().state == net::State::Connected && (!failed || millis() - triedMs >= kRetryMs)) {
       const std::vector<thermo::LogRecord> batch = s_cache.peek(kBatch);
       failed = !send(server, batch);
-      failedMs = millis();
+      triedMs = millis();
       if (!failed && !batch.empty()) {
         if (!s_cache.markSent()) Serial.println("Record cache write FAILED");
         Serial.printf("Sent %u waiting records\n", static_cast<unsigned>(batch.size()));
@@ -259,6 +263,20 @@ void begin() {
 
 void add(const thermo::LogRecord& rec) {
   if (s_queue && xQueueSend(s_queue, &rec, 0) != pdTRUE) Serial.println("Record dropped: queue full");
+}
+
+const char* notice() {
+  // A short gap in Wi-Fi is not worth a message; a network being set up is shown on its own screen.
+  static uint32_t lastUpMs = 0;
+  const net::State st = net::status().state;
+  if (st != net::State::Connecting && st != net::State::Offline) lastUpMs = millis();
+  if (millis() - lastUpMs >= kWifiNoticeMs) return "No Wi-Fi";
+  if (st != net::State::Connected) return "";
+  switch (s_link.load()) {
+    case Link::NoAnswer: return "Server not reachable";
+    case Link::BadToken: return "Server rejected the token";
+    default: return "";
+  }
 }
 
 void summary(char* buf, size_t n) {

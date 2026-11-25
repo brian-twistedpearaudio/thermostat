@@ -29,11 +29,11 @@ Not yet included: Info screen, pulling configuration from the server, OTA. The t
 |---|---|
 | Build and upload | `pio run -e t-display-s3 -t upload` |
 | Serial monitor | `pio device monitor` |
-| Logic tests on the PC | `pio test -e native` (needs a C++ compiler on the PC) |
+| Logic tests on the PC | `pio test -e native` (needs `g++` on the PATH; the Strawberry Perl one, also inside Lyrion Music Server's `Perl\c\bin`, works) |
 
 ## Status of checks
 
-- `lib/thermo_core` (control and schedule logic): 13 control and schedule tests passed earlier. 3 settings and 3 Wi-Fi and name text tests and 7 record, cache and upload tests and 2 graph tests added since; they compile, but have **not been run** (no PC compiler yet).
+- `lib/thermo_core`: all 28 logic tests (13 control and schedule, 3 settings, 3 Wi-Fi and name text, 7 record, cache and upload, 2 graph) passed on the PC. `.github/workflows/ci.yml` is set to run them on pull requests and on pushes to `develop` and `main`, and to build the firmware and the server.
 - Firmware builds and boots on the bare T-Display-S3 board (no sensor or relay) with no resets in 25 s. Set point +, the settings screen (scrolling and buttons), saving settings, Off mode display, the look of the dimmed screen and wake-up touch were checked by hand.
 - Wi-Fi setup through the hotspot was checked on the board: a failed first attempt was reported and setup could be repeated, the second attempt connected, and the log showed network time setting the clock. The `request handler not found` log lines during setup are harmless (requests for pages that do not exist, answered by a redirect to the setup page).
 - Setting a thermostat name, and reconnecting to Wi-Fi after a reset without setup, were also checked on the board.

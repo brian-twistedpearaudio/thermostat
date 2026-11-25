@@ -51,7 +51,7 @@ Warnings and errors go to Event Viewer, **Windows Logs**, **Application**.
 
 ## Run on Linux
 
-For a 64-bit Linux with systemd and glibc, such as Debian, Ubuntu, Raspberry Pi OS (64-bit) or Fedora. The host does not need .NET. Publish on any PC with the .NET 10 SDK, `linux-x64` for Intel and AMD or `linux-arm64` for ARM (`uname -m` on the host says `x86_64` or `aarch64`):
+For a 64-bit Intel or AMD PC or VM with systemd and glibc, such as Debian, Ubuntu or Fedora. The host does not need .NET. Publish on any PC with the .NET 10 SDK:
 
 ```powershell
 dotnet publish -c Release -r linux-x64 --self-contained
@@ -69,7 +69,7 @@ To update, publish and copy again, then `sudo bash linux/update.sh`. To uninstal
 
 The scripts do not change the firewall. Allow inbound TCP 5080 from the home network only.
 
-Not supported: 32-bit systems, Alpine (musl) and systems without systemd.
+For 64-bit ARM, publish `linux-arm64` instead (not tested). Not supported: 32-bit systems, Alpine (musl) and systems without systemd.
 
 ### Move from the Windows PC
 

@@ -50,3 +50,7 @@ jobs:
         with:
           dotnet-version: 10.0.x
       - run: dotnet build server
+      - run: dotnet publish server -c Release -r linux-arm64 --self-contained
+      - run: dotnet publish server -c Release -r linux-x64 --self-contained
+      - name: Install, update and uninstall on Linux
+        run: bash server/linux/test.sh server/bin/Release/net10.0/linux-x64/publish

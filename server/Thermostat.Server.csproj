@@ -11,7 +11,17 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.*" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="10.0.*" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.*" />
+  </ItemGroup>
+
+  <!-- Linux: no ICU library needed on the host, and the install scripts go with the published copy. -->
+  <PropertyGroup Condition="$(RuntimeIdentifier.StartsWith('linux'))">
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup Condition="$(RuntimeIdentifier.StartsWith('linux'))">
+    <None Update="linux/*" CopyToPublishDirectory="Always" />
+    <None Update="linux/test.sh" CopyToPublishDirectory="Never" />
   </ItemGroup>
 
 </Project>

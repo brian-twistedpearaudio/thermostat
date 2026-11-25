@@ -49,6 +49,35 @@ powershell -ExecutionPolicy Bypass -File .\uninstall-service.ps1
 
 Warnings and errors go to Event Viewer, **Windows Logs**, **Application**.
 
+## Run on Linux
+
+For a 64-bit Linux with systemd and glibc, such as Debian, Ubuntu, Raspberry Pi OS (64-bit) or Fedora. The host does not need .NET. Publish on any PC with the .NET 10 SDK, `linux-x64` for Intel and AMD or `linux-arm64` for ARM (`uname -m` on the host says `x86_64` or `aarch64`):
+
+```powershell
+dotnet publish -c Release -r linux-x64 --self-contained
+```
+
+Copy the folder `bin/Release/net10.0/linux-x64/publish` to the host, for example with `scp -r`. Copy the whole folder into a new one each time. In it, on the host:
+
+```bash
+sudo bash linux/install.sh --copy-from ~/data    # or --new-data to start with no readings
+```
+
+One of the options is required the first time, and neither ever overwrites existing data. The service starts with the system, restarts if it fails, and runs as its own user, `thermostat-server`, which cannot log in. The program is in `/opt/thermostat-server/app`; the readings and token are in `/var/lib/thermostat-server`, which only that user and root can open. To read the token: `sudo cat /var/lib/thermostat-server/token.txt`. Back up that folder only with the service stopped.
+
+To update, publish and copy again, then `sudo bash linux/update.sh`. To uninstall, keeping the data and its user, `sudo bash linux/uninstall.sh`. Settings come from the published `appsettings.json`, and the scripts expect port 5080. Logs: `journalctl -u thermostat-server`.
+
+The scripts do not change the firewall. Allow inbound TCP 5080 from the home network only.
+
+Not supported: 32-bit systems, Alpine (musl) and systems without systemd.
+
+### Move from the Windows PC
+
+1. Stop the server on the PC: Ctrl+C in its terminal, or `Stop-Service ThermostatServer` as administrator. Make sure it cannot start again: `Set-Service ThermostatServer -StartupType Disabled`.
+2. Copy `thermostat.db`, `token.txt` and, if there is one, `thermostat.db-wal` to a private folder on the host, such as `~/data`. They are in `data`, or for the service in `C:\ProgramData\ThermostatServer` (as administrator).
+3. Install with `--copy-from` as above. Give the host a fixed address, and delete the copy in `~/data` when all is well.
+4. Enter the new address, such as `192.168.1.20:5080`, on each thermostat's Wi-Fi setup page. The token stays the same. The thermostats keep their records until they reach the new server.
+
 ## Charts
 
 Open `http://<this PC's address>:5080` in a browser on the home network (`http://localhost:5080` on this PC) and enter the token. Select up to 8 thermostats and a range; ranges over 2 days show averages. The charts refresh each minute. A remembered token is kept in that browser until **Forget token**.

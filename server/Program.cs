@@ -16,7 +16,9 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
     Args = args,
     ContentRootPath = published ? AppContext.BaseDirectory : null,
 });
+// Each does nothing unless started as that kind of service.
 builder.Services.AddWindowsService(o => o.ServiceName = "ThermostatServer");
+builder.Services.AddSystemd();
 builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = 256 * 1024);
 var app = builder.Build();
 

@@ -33,13 +33,16 @@ bool Controller::update(float tempF, bool sensorOk, uint32_t nowS) {
     // Inside the band: keep the current state.
   }
 
+  waitS_ = waitTotalS_ = 0;
   if (want != heating_) {
     const uint32_t elapsed = nowS - lastChangeS_;
-    const bool allowed =
-        force || (want ? elapsed >= cfg_.minOffS : elapsed >= cfg_.minOnS);
-    if (allowed) {
+    const uint32_t minimum = want ? cfg_.minOffS : cfg_.minOnS;
+    if (force || elapsed >= minimum) {
       heating_ = want;
       lastChangeS_ = nowS;
+    } else {
+      waitS_ = minimum - elapsed;
+      waitTotalS_ = minimum;
     }
   }
   return heating_;

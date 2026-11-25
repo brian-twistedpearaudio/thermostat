@@ -25,7 +25,8 @@ static const uint32_t kText = 0xFFFFFF;            // canvas 0xF2F5F8
 static const uint32_t kMuted = 0x9A9A9A;           // canvas 0x9AA7B4
 static const uint32_t kHeatText = 0xFFA050;        // canvas 0xFFB37A
 static const uint32_t kHeatBg = 0x4A2000;          // canvas 0x3A2210
-static const uint32_t kHeatDot = 0xFF8A3D;         // canvas 0xFF8A3D
+static const uint32_t kWaitBar = 0x803800;         // countdown to a relay change
+static const uint32_t kHeatDot =0xFF8A3D;         // canvas 0xFF8A3D
 static const uint32_t kFaultText = 0xFFC0C0;       // canvas 0xFFB4B4
 static const uint32_t kFaultBg = 0x700000;         // canvas 0x3A1518
 
@@ -136,6 +137,42 @@ static void setStatusText(lv_obj_t* label, const char* text, int maxW) {
   lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_SCROLL_CIRCULAR);
 }
 
+// While a relay change waits, the background of the status line is a bar that shrinks to nothing as
+// the change comes, inside the same outline.
+static uint32_t s_waitS = 0, s_waitTotalS = 0;
+
+static void setPillBackground(uint32_t color, uint32_t waitS, uint32_t waitTotalS) {
+  s_waitS = waitS;
+  s_waitTotalS = waitTotalS;
+  const bool bar = waitTotalS > 0;
+  lv_obj_set_style_bg_color(s_pill, lv_color_hex(bar ? kBg : color), 0);
+  lv_obj_set_style_border_color(s_pill, lv_color_hex(bar ? kWaitBar : color), 0);
+  lv_obj_invalidate(s_pill);
+}
+
+// Draws the bar over the pill's own background and under its text, a column at a time so that it
+// follows the rounded ends.
+static void pillDrawEvent(lv_event_t* e) {
+  if (s_waitTotalS == 0) return;
+  lv_area_t a;
+  lv_obj_get_coords(s_pill, &a);
+  const int w = lv_area_get_width(&a) - 2, h = lv_area_get_height(&a) - 2;  // inside the border
+  const float r = h / 2.0f;
+  const uint32_t length = s_waitS * w * 256 / s_waitTotalS;  // in 1/256 px
+  lv_draw_fill_dsc_t d;
+  lv_draw_fill_dsc_init(&d);
+  d.color = lv_color_hex(kWaitBar);
+  for (int x = 0; x < w && static_cast<uint32_t>(x) * 256 < length; ++x) {
+    const uint32_t part = length - x * 256;  // the last column is shaded by how much of it is left
+    d.opa = part >= 256 ? LV_OPA_COVER : static_cast<lv_opa_t>(part);
+    const float fromEnd = (x < w - 1 - x ? x : w - 1 - x) + 0.5f;
+    const int inset = fromEnd >= r ? 0 : static_cast<int>(lroundf(r - sqrtf(r * r - (r - fromEnd) * (r - fromEnd))));
+    const int px = a.x1 + 1 + x;
+    const lv_area_t column = {px, a.y1 + 1 + inset, px, a.y2 - 1 - inset};
+    lv_draw_fill(lv_event_get_layer(e), &d, &column);
+  }
+}
+
 static void settingsEvent(lv_event_t*) {
   if (s_onSettings) s_onSettings();
 }
@@ -162,7 +199,6 @@ void homeSetName(const char* name) {
 }
 
 void homeShow() { lv_screen_load(s_screen); }
-
 void homeCreate(void (*onSetpointDelta)(int delta), void (*onSettings)(), void (*onGraph)()) {
   s_onDelta = onSetpointDelta;
   s_onGraph = onGraph;
@@ -213,12 +249,14 @@ void homeCreate(void (*onSetpointDelta)(int delta), void (*onSettings)(), void (
   lv_obj_set_clickable(s_pill, false);
   lv_obj_set_scrollable(s_pill, false);
   lv_obj_set_size(s_pill, LV_SIZE_CONTENT, 19);
-  lv_obj_set_style_pad_hor(s_pill, kPillPad, 0);
+  lv_obj_set_style_pad_hor(s_pill, kPillPad - 1, 0);  // and the border
   lv_obj_set_style_radius(s_pill, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_bg_opa(s_pill, LV_OPA_COVER, 0);
   lv_obj_set_flex_flow(s_pill, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(s_pill, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_pad_column(s_pill, kDotGap, 0);
+  lv_obj_set_style_border_width(s_pill, 1, 0);
+  lv_obj_add_event_cb(s_pill, pillDrawEvent, LV_EVENT_DRAW_MAIN, nullptr);
   s_pillDot = makeShape(s_pill, kDot, kDot, kHeatDot, LV_RADIUS_CIRCLE);
   s_pillText = makeLabel(s_pill, &ui_font_semi_11, kHeatText, "");
   lv_obj_set_hidden(s_pill, true);
@@ -317,17 +355,19 @@ void homeUpdate(const HomeState& s) {
       snprintf(buf, sizeof(buf), "%d%% humidity", static_cast<int>(lroundf(s.humidity)));
     }
     lv_label_set_text(s_humidity, buf);
-    if (s.heating || notice) {
+    const bool waiting = s.waitTotalS > 0;
+    const bool heat = s.heating || waiting;  // on, or about to be
+    if (heat || notice) {
       lv_obj_update_layout(s_humidity);
       const int offset = s.hasHumidity ? lv_obj_get_width(s_humidity) + 8 : 0;
       lv_obj_set_pos(s_pill, kPad + offset, kBottomBaseline - 13);
-      // Orange while heating, grey for a notice alone.
-      lv_obj_set_style_bg_color(s_pill, lv_color_hex(s.heating ? kHeatBg : kSurface), 0);
+      // Orange while heating or waiting to, with a grey dot until the relay is on; grey for a notice alone.
+      setPillBackground(heat ? kHeatBg : kSurface, s.waitS, s.waitTotalS);
       lv_obj_set_style_bg_color(s_pillDot, lv_color_hex(s.heating ? kHeatDot : kMuted), 0);
-      lv_obj_set_style_text_color(s_pillText, lv_color_hex(s.heating ? kHeatText : kText), 0);
+      lv_obj_set_style_text_color(s_pillText, lv_color_hex(heat ? kHeatText : kText), 0);
       lv_obj_set_hidden(s_pill, false);
-      snprintf(status, sizeof(status), "%s%s%s", s.heating ? "Heat on" : "", s.heating && notice ? " \xC2\xB7 " : "",
-               s.notice);
+      const char* heatText = s.heating ? "Heat on" : waiting ? "Heat waiting" : "";
+      snprintf(status, sizeof(status), "%s%s%s", heatText, heat && notice ? " \xC2\xB7 " : "", s.notice);
       setStatusText(s_pillText, status, kPillSpace - offset - 2 * kPillPad - kDot - kDotGap);
     } else {
       lv_obj_set_hidden(s_pill, true);

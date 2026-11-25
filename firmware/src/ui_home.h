@@ -13,6 +13,8 @@ struct HomeState {
   bool heating = false;
   bool modeOff = false;      // mode is Off: the set point is not in use
   bool overridden = false;   // manual change in force (label wording comes with the schedule UI)
+  uint32_t waitS = 0;        // seconds until the relay may change, while a change is waiting
+  uint32_t waitTotalS = 0;   // the whole wait; 0 if none
   const char* notice = "";   // connection problem for the status line; empty if none
   bool timeValid = false;
   uint8_t hour = 0;          // 0..23 local
@@ -23,8 +25,7 @@ struct HomeState {
 // onSettings is called when the top-left of the screen (gear) is tapped.
 // onGraph is called when the big temperature is tapped.
 void homeCreate(void (*onSetpointDelta)(int delta), void (*onSettings)(), void (*onGraph)());
-void homeShow();
-void homeUpdate(const HomeState& s);
+void homeShow();void homeUpdate(const HomeState& s);
 void homeSetName(const char* name);  // top-left text; empty shows "Inside"
 
 }  // namespace ui

@@ -39,6 +39,25 @@ static void test_swing_band() {
   TEST_ASSERT_FALSE(c.update(70.0f, true, 3000));  // inside band, stays off
 }
 
+static void test_wait_for_relay() {
+  Controller c;
+  c.update(60.0f, true, 30);  // wants heat, held back since boot
+  TEST_ASSERT_EQUAL_UINT32(150, c.waitS());
+  TEST_ASSERT_EQUAL_UINT32(180, c.waitTotalS());
+  c.update(68.0f, true, 40);  // no longer wants it
+  TEST_ASSERT_EQUAL_UINT32(0, c.waitTotalS());
+  c.update(60.0f, true, 179);
+  TEST_ASSERT_EQUAL_UINT32(1, c.waitS());
+  TEST_ASSERT_TRUE(c.update(60.0f, true, 180));
+  TEST_ASSERT_EQUAL_UINT32(0, c.waitTotalS());  // on, and wants to stay on
+  TEST_ASSERT_TRUE(c.update(80.0f, true, 200));  // wants off, held back
+  TEST_ASSERT_EQUAL_UINT32(100, c.waitS());
+  TEST_ASSERT_EQUAL_UINT32(120, c.waitTotalS());
+  TEST_ASSERT_FALSE(c.update(80.0f, false, 201));  // a fault does not wait
+  TEST_ASSERT_EQUAL_UINT32(0, c.waitS());
+  TEST_ASSERT_EQUAL_UINT32(0, c.waitTotalS());
+}
+
 static void test_min_on_time() {
   Controller c;
   c.setSetpoint(70.0f);
@@ -545,6 +564,7 @@ int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_no_heat_until_min_off_after_boot);
   RUN_TEST(test_swing_band);
+  RUN_TEST(test_wait_for_relay);
   RUN_TEST(test_min_on_time);
   RUN_TEST(test_min_off_time);
   RUN_TEST(test_sensor_fault_forces_off_immediately);

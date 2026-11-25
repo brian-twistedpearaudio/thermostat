@@ -107,7 +107,7 @@ const char* wifiSummary(const net::Status& s) {
   return "";
 }
 
-void wifiUpdate(const net::Status& s) {
+void wifiUpdate(const net::Status& s, const char* serverText) {
   char buf[160];
   const bool hotspot = s.state == net::State::Hotspot;
   const bool busy = s.state == net::State::Starting || s.state == net::State::Trying;
@@ -129,7 +129,7 @@ void wifiUpdate(const net::Status& s) {
 
   switch (s.state) {
     case net::State::Connected:
-      snprintf(buf, sizeof(buf), "Connected to %s\n%s", s.ssid, s.ip);
+      snprintf(buf, sizeof(buf), "Connected to %s\n%s\n%s", s.ssid, s.ip, serverText);
       break;
     case net::State::Connecting:
       snprintf(buf, sizeof(buf), "Connecting to %s...", s.ssid);

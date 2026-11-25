@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "config.h"
+#include "upload_text.h"
 #include "wifi_text.h"
 
 namespace net {
@@ -29,6 +30,7 @@ static std::atomic<Request> s_request{Request::None};
 
 static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
 static Status s_status;
+static Server s_serverConfig;
 
 // Everything below is used only by the network task.
 static std::string s_ssid, s_password;        // saved network
@@ -141,6 +143,52 @@ static bool saveName(const std::string& name) {
   return ok;
 }
 
+// ---- Server ----
+
+static_assert(thermo::kMaxServer < sizeof(Server::address) && thermo::kMaxToken < sizeof(Server::token), "");
+
+Server server() {
+  portENTER_CRITICAL(&s_mux);
+  const Server copy = s_serverConfig;
+  portEXIT_CRITICAL(&s_mux);
+  return copy;
+}
+
+static void setServer(const Server& s) {
+  portENTER_CRITICAL(&s_mux);
+  s_serverConfig = s;
+  portEXIT_CRITICAL(&s_mux);
+}
+
+static void loadServer() {
+  Preferences p;
+  if (!p.begin(kNamespace, true)) return;  // nothing saved yet
+  Server s;
+  const bool ok = p.isKey("server") && p.getBytes("server", &s, sizeof(s)) == sizeof(s);
+  p.end();
+  if (!ok) return;
+  s.address[sizeof(s.address) - 1] = '\0';
+  s.token[sizeof(s.token) - 1] = '\0';
+  std::string address = s.address;
+  if (thermo::cleanServer(address) && thermo::validToken(s.token)) setServer(s);
+}
+
+static bool saveServer(const std::string& address, const std::string& token) {
+  Server s;
+  if (!address.empty()) {  // no server: the token goes too
+    strlcpy(s.address, address.c_str(), sizeof(s.address));
+    strlcpy(s.token, token.c_str(), sizeof(s.token));
+  }
+  const Server old = server();
+  if (strcmp(s.address, old.address) == 0 && strcmp(s.token, old.token) == 0) return true;
+  Preferences p;
+  if (!p.begin(kNamespace, false)) return false;
+  const bool ok = p.putBytes("server", &s, sizeof(s)) == sizeof(s);
+  p.end();
+  if (ok) setServer(s);
+  return ok;
+}
+
 // ---- Connecting ----
 
 static void join(State st, const std::string& ssid, const std::string& password) {
@@ -189,7 +237,7 @@ static void sendPage(int code, const std::string& body) {
   s_server.send(code, "text/html; charset=utf-8", page.c_str());
 }
 
-static void sendForm(int code, const char* error, const std::string& name) {
+static void sendForm(int code, const char* error, const std::string& name, const std::string& address) {
   std::string b;
   if (error[0] != '\0') b += std::string("<p><b>") + error + "</b></p>";
   b += "<form method=post action=/save><label for=t>Thermostat name (optional)</label>"
@@ -206,6 +254,12 @@ static void sendForm(int code, const char* error, const std::string& name) {
        "<input id=o name=other maxlength=32 autocapitalize=none autocomplete=off>"
        "<label for=p>Password</label>"
        "<input id=p name=pass type=password maxlength=63 autocomplete=off>"
+       "<label for=s>Server address (optional)</label>"
+       "<input id=s name=server maxlength=80 autocapitalize=none autocomplete=off "
+       "placeholder='192.168.1.10:5080' value=\"" + thermo::htmlEscape(address) + "\">"
+       "<label for=k>Server token" +
+       (server().token[0] != '\0' ? " (empty keeps the saved one)" : "") + "</label>"
+       "<input id=k name=token type=password maxlength=64 autocomplete=off>"
        "<button>Save and connect</button></form>"
        "<p>The thermostat uses 2.4 GHz networks only.</p>";
   sendPage(code, b);
@@ -213,8 +267,19 @@ static void sendForm(int code, const char* error, const std::string& name) {
 
 static void handleSave() {
   std::string name = s_server.arg("name").c_str();
+  std::string address = s_server.arg("server").c_str();
+  std::string token = s_server.arg("token").c_str();
   if (!thermo::cleanName(name)) {
-    sendForm(400, "The thermostat name can have up to 16 plain letters, numbers and symbols.", name);
+    sendForm(400, "The thermostat name can have up to 16 plain letters, numbers and symbols.", name, address);
+    return;
+  }
+  if (!thermo::cleanServer(address)) {
+    sendForm(400, "The server address should look like 192.168.1.10:5080.", name, address);
+    return;
+  }
+  if (token.empty()) token = server().token;
+  if (!address.empty() && !thermo::validToken(token)) {
+    sendForm(400, "Enter the server token: 16 to 64 letters and digits.", name, address);
     return;
   }
 
@@ -223,7 +288,7 @@ static void handleSave() {
   const std::string password = s_server.arg("pass").c_str();
   const bool keep = ssid.empty() && choice == "keep" && !s_ssid.empty();
   if (keep && !password.empty()) {
-    sendForm(400, "To enter a new password, choose the network from the list.", name);
+    sendForm(400, "To enter a new password, choose the network from the list.", name, address);
     return;
   }
   if (ssid.empty() && choice.length() > 0 && isDigit(choice[0])) {
@@ -232,12 +297,12 @@ static void handleSave() {
   }
   if (!keep && !thermo::validWifi(ssid, password)) {
     sendForm(400, "Choose a network. The password must be 8 to 63 characters, or empty for an open network.",
-             name);
+             name, address);
     return;
   }
-  if (!saveName(name)) {
-    Serial.println("Name save FAILED");
-    sendForm(500, "The thermostat name could not be saved. Please try again.", name);
+  if (!saveName(name) || !saveServer(address, token)) {
+    Serial.println("Name or server save FAILED");
+    sendForm(500, "The name or server could not be saved. Please try again.", name, address);
     return;
   }
   if (keep) ssid.clear();
@@ -252,7 +317,7 @@ static void handleSave() {
 static void addRoutes() {
   if (s_routesAdded) return;
   s_routesAdded = true;
-  s_server.on("/", HTTP_GET, [] { sendForm(200, "", s_name); });
+  s_server.on("/", HTTP_GET, [] { sendForm(200, "", s_name, server().address); });
   s_server.on("/save", HTTP_POST, handleSave);
   s_server.onNotFound([] {  // sends phones that are checking for internet to the page
     s_server.sendHeader("Location", "http://192.168.4.1/");
@@ -402,6 +467,7 @@ static void task(void*) {
 }
 
 void begin() {
+  loadServer();
   loadName();  // before the task starts, so Home shows the name from its first refresh
   // Core 0; loop(), with heating control, runs on core 1.
   if (xTaskCreatePinnedToCore(task, "net", 8192, nullptr, 1, nullptr, 0) != pdPASS) {

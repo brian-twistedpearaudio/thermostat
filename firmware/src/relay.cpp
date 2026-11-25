@@ -19,6 +19,7 @@ void set(bool on) {
   if (on == s_on) return;
   s_on = on;
   digitalWrite(PIN_RELAY, on ? HIGH : LOW);
+  Serial.printf("[%lu s] Relay %s\n", millis() / 1000UL, on ? "ON" : "off");
 }
 
 bool isOn() { return s_on; }

@@ -13,6 +13,7 @@ struct HomeState {
   bool heating = false;
   bool modeOff = false;      // mode is Off: the set point is not in use
   bool overridden = false;   // manual change in force (label wording comes with the schedule UI)
+  const char* notice = "";   // connection problem for the status line; empty if none
   bool timeValid = false;
   uint8_t hour = 0;          // 0..23 local
   uint8_t minute = 0;

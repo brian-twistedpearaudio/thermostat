@@ -29,10 +29,23 @@ Working design, 2026-11-25. The architecture is agreed; values and parts are not
 - A charger on the carrier board with input-voltage regulation and power path, such as the **MCP73871** (VPCC). Its system output feeds the **LilyGO's battery connector**, so the onboard TP4056 stays idle (no VBUS) except while USB is plugged in for programming.
 - The firmware already drives GPIO15 HIGH, which the display needs when running on battery.
 
+## Measurements (2026-11-26)
+
+| Loop | Thermostat | W current during a call | Harvest at ~4.5 V |
+|---|---|---|---|
+| Standard hydronic loop | Basic passive switch | 0.336 A | about 1.5 W |
+| Radiant loop | Existing power-stealing thermostat | 0.04 A | about 0.18 W |
+
+- **Hydronic, 0.336 A:** plenty of power, but unused harvest becomes heat in the enclosure: up to about 1.5 W in the shunt clamp, plus about 0.4 W in the triac and 0.2 W in the bridge, next to the temperature sensor. Plan a MOSFET that bypasses the series bridge once the cell is full, so the board harvests only when needed. The triac needs copper area or a larger package than TO-92. 0.336 A also exceeds the prototype G6K's 0.3 A contact rating.
+- **Radiant, 0.04 A:** less than the board's average draw with Wi-Fi on, so the cell carries the board even during calls. Needs a larger harvest drop (if the controller accepts it), aggressive sleep, and a much slower server sync than the 10-second polling in `docs/sync.md`.
+- Supporting both loops pushes the design toward the battery-centred version.
+
 ## Open items and measurements
 
-1. Boiler W loop current during a heat call. Sizes the series harvester and confirms the triac's holding current is covered.
-2. The largest idle current from Rh to W that does not start the boiler. Start with about 10 kΩ (about 2.6 mA). Decides whether the trickle covers the light-sleep load, and sizes the cell.
+1. ~~Boiler W loop current during a heat call.~~ Measured: 0.336 A (hydronic) and 0.04 A (radiant). Both are well above the triac's holding current.
+2. The largest idle current from Rh to W that does not start the boiler. Start with about 10 kΩ (about 2.6 mA). On the radiant loop, the existing power-stealing thermostat's idle current (W current and Rh–W voltage while it is idle) is a safe reference. Decides whether the trickle covers the light-sleep load, and sizes the cell.
 3. Boiler minimum pull-in voltage (the boiler sees about 20–21 V).
 4. Firmware power management (display dimming or off, Wi-Fi duty cycling), depending on item 2.
 5. Choice of harvester parts (bridge, clamp, idle converter) and cell capacity, once items 1 and 2 are known.
+6. Which loops the thermostat must support (hydronic, radiant or both).
+7. Idle harvester topology: its input floats relative to the series bridge's ground, so it probably needs a small isolated converter.

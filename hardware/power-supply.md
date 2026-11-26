@@ -40,6 +40,14 @@ Working design, 2026-11-25. The architecture is agreed; values and parts are not
 - **Radiant, 0.04 A:** less than the board's average draw with Wi-Fi on, so the cell carries the board even during calls. Needs a larger harvest drop (if the controller accepts it), aggressive sleep, and a much slower server sync than the 10-second polling in `docs/sync.md`.
 - Supporting both loops pushes the design toward the battery-centred version.
 
+### Radiant loop: Uponor thermal actuators
+
+- The radiant zones use **Uponor 24 VAC thermal (wax) actuators** with end switches, currently controlled by an Erie T201 two-wire digital thermostat running on stolen power only (no battery, no C wire).
+- Uponor rates the 4-wire thermal actuator (A3023522) at about 1 W working power, under 300 mA for 2 minutes at start-up (the November 2024 instruction sheet says 200 mA maximum for two minutes), and 24 VAC +20% / −10%. The measured 0.04 A is the running current.
+- **Idle trickle:** the actuator is a heater, not a relay, so it only opens after minutes of heating at about 1 W. A 10–20 mA trickle delivers tens of milliwatts, so idle harvesting of roughly 0.2–0.4 W at about 24 V may be possible. To be confirmed by test: about 2.4 kΩ (1 W) across the thermostat terminals for an hour, with no actuator movement and no boiler start.
+- **Call voltage margin:** minimum actuator voltage is about 21.6 V. From 26 VAC that leaves about 4.4 V for harvest drop plus triac drop.
+- Still to check: whether the thermostat wires go straight to the actuator and transformer, or through an Uponor zone control module (which may have a C terminal).
+
 ## Open items and measurements
 
 1. ~~Boiler W loop current during a heat call.~~ Measured: 0.336 A (hydronic) and 0.04 A (radiant). Both are well above the triac's holding current.

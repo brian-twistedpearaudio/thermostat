@@ -40,13 +40,14 @@ Working design, 2026-11-25. The architecture is agreed; values and parts are not
 - **Radiant, 0.04 A:** less than the board's average draw with Wi-Fi on, so the cell carries the board even during calls. Needs a larger harvest drop (if the controller accepts it), aggressive sleep, and a much slower server sync than the 10-second polling in `docs/sync.md`.
 - Supporting both loops pushes the design toward the battery-centred version.
 
-### Radiant loop: Uponor thermal actuators
+### Radiant loop: Erie switching relays driving Uponor thermal actuators
 
-- The radiant zones use **Uponor 24 VAC thermal (wax) actuators** with end switches, currently controlled by an Erie T201 two-wire digital thermostat running on stolen power only (no battery, no C wire).
-- Uponor rates the 4-wire thermal actuator (A3023522) at about 1 W working power, under 300 mA for 2 minutes at start-up (the November 2024 instruction sheet says 200 mA maximum for two minutes), and 24 VAC +20% / −10%. The measured 0.04 A is the running current.
-- **Idle trickle:** the actuator is a heater, not a relay, so it only opens after minutes of heating at about 1 W. A 10–20 mA trickle delivers tens of milliwatts, so idle harvesting of roughly 0.2–0.4 W at about 24 V may be possible. To be confirmed by test: about 2.4 kΩ (1 W) across the thermostat terminals for an hour, with no actuator movement and no boiler start.
-- **Call voltage margin:** minimum actuator voltage is about 21.6 V. From 26 VAC that leaves about 4.4 V for harvest drop plus triac drop.
-- Still to check: whether the thermostat wires go straight to the actuator and transformer, or through an Uponor zone control module (which may have a C terminal).
+- The radiant zones use **Uponor 24 VAC thermal (wax) actuators** with end switches. They are driven by **Erie "Boiler Boss" switching relays**, and each relay is controlled by an Erie T201 two-wire digital thermostat running on stolen power only (no battery, no C wire in use).
+- **The thermostat's load is the relay input, not the actuator.** The measured 0.04 A is most likely the relay's input current. Idle trickle must stay below what makes that input pull in, and switching-relay inputs can be electronic and sensitive (Honeywell's equivalent R8845U uses DC relay drive), so do not assume a large trickle is safe.
+- **C terminal:** Erie switching relays contain their own 24 VAC transformer and normally have R, W/G and C thermostat terminals (Honeywell's cross-reference lists the Erie SR100AT as G(T), R(T), C). The equivalent R8845U's transformer is 24 VAC, 12 VA, with 9 VA available for external loads, plenty for the thermostat's 0.5–1 VA.
+- **Preferred approach for the radiant zones:** use the relay's C terminal. If the cable has a spare conductor, wire R, W and C normally, with no harvesting. If the cable has only two conductors, a companion module beside the relay takes R and C from it and carries power plus the heat call over the two existing wires.
+- To check: the relay's model number and C terminal, and whether the thermostat cable has a spare conductor.
+- Background on the actuators: Uponor rates the 4-wire thermal actuator (A3023522) at about 1 W working power, under 300 mA for 2 minutes at start-up, 24 VAC +20% / −10%.
 
 ## Open items and measurements
 

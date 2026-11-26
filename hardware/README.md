@@ -7,6 +7,7 @@ Claude Code sessions: do not edit files in this folder; suggest changes instead.
 | File | Contents |
 |---|---|
 | [power-supply.md](power-supply.md) | Power harvesting from the Rh–W loop, triac switching, protection, Li-ion charging, open measurements |
+| [two-wire-module.md](two-wire-module.md) | Proposed: module at each zone that powers the thermostat and carries its heat call over the existing two wires |
 | [prototype-wiring.md](prototype-wiring.md) | Bench prototype: LilyGO header pinout, BMP280, BC550 and G6K relay wiring |
 
 Fusion Electronics files and exports will go in this folder as well.
